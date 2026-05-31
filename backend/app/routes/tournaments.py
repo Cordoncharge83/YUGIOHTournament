@@ -6,10 +6,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Match, Player, Round, Tournament
+from app.models import Match, Player, Round, Standing, Tournament
 from app.schemas import (
     RoundCsvImportSummary,
     RoundCsvPreviewSummary,
+    StandingsCsvImportSummary,
     TournamentCreate,
     TournamentCurrentRoundUpdate,
     TournamentRead,
@@ -112,6 +113,66 @@ def parse_round_csv(csv_text: str) -> list[tuple[int, str, str | None, str | Non
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="CSV does not contain any matches")
 
     return imported_rows
+
+
+def parse_standings_csv(csv_text: str) -> list[dict[str, str | int | None]]:
+    reader = csv.DictReader(StringIO(csv_text))
+    required_columns = {"Rank", "Full Name", "Short Name", "COSSY ID", "Points", "Tiebreaker"}
+    if reader.fieldnames is None or not required_columns.issubset(set(reader.fieldnames)):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail='CSV must include "Rank", "Full Name", "Short Name", "COSSY ID", "Points", and "Tiebreaker" columns',
+        )
+
+    standings_rows: list[dict[str, str | int | None]] = []
+    for row_number, row in enumerate(reader, start=2):
+        rank_value = (row.get("Rank") or "").strip()
+        full_name = (row.get("Full Name") or "").strip()
+        short_name = (row.get("Short Name") or "").strip()
+        cossy_id = (row.get("COSSY ID") or "").strip()
+        points_value = (row.get("Points") or "").strip()
+        tiebreaker = (row.get("Tiebreaker") or "").strip()
+
+        if not rank_value and not full_name and not short_name and not cossy_id and not points_value and not tiebreaker:
+            continue
+
+        if not rank_value or not full_name or not points_value:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Row {row_number} must include Rank, Full Name, and Points",
+            )
+
+        try:
+            rank = int(rank_value)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Row {row_number} has an invalid rank",
+            ) from exc
+
+        try:
+            points = int(points_value)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Row {row_number} has invalid points",
+            ) from exc
+
+        standings_rows.append(
+            {
+                "rank": rank,
+                "full_name": full_name,
+                "short_name": short_name or None,
+                "cossy_id": cossy_id or None,
+                "points": points,
+                "tiebreaker": tiebreaker or None,
+            }
+        )
+
+    if not standings_rows:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="CSV does not contain any standings")
+
+    return sorted(standings_rows, key=lambda standing: int(standing["rank"]))
 
 
 async def read_csv_upload(file: UploadFile) -> str:
@@ -300,4 +361,34 @@ async def import_round_csv(
         round_number=round_number,
         matches_imported=len(imported_rows),
         players_created=players_created,
+    )
+
+
+@router.post("/{tournament_id}/import-standings-csv", response_model=StandingsCsvImportSummary)
+async def import_standings_csv(
+    tournament_id: int,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+) -> StandingsCsvImportSummary:
+    tournament = db.get(Tournament, tournament_id)
+    if tournament is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
+
+    standings_rows = parse_standings_csv(await read_csv_upload(file))
+
+    existing_standings = list(db.scalars(select(Standing).where(Standing.tournament_id == tournament_id)))
+    for standing in existing_standings:
+        db.delete(standing)
+    db.flush()
+
+    for row in standings_rows:
+        db.add(Standing(tournament_id=tournament_id, **row))
+
+    db.commit()
+
+    top_player = standings_rows[0]
+    return StandingsCsvImportSummary(
+        players_imported=len(standings_rows),
+        top_player_name=str(top_player["short_name"] or top_player["full_name"]),
+        top_player_points=int(top_player["points"]),
     )

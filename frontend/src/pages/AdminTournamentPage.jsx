@@ -39,6 +39,7 @@ export default function AdminTournamentPage() {
   const [isCreatingMatch, setIsCreatingMatch] = useState(false);
   const [savingMatchId, setSavingMatchId] = useState(null);
   const [matchesError, setMatchesError] = useState("");
+  const [standings, setStandings] = useState([]);
   const [copyMessage, setCopyMessage] = useState("");
   const [importRoundNumber, setImportRoundNumber] = useState("1");
   const [importFile, setImportFile] = useState(null);
@@ -48,9 +49,15 @@ export default function AdminTournamentPage() {
   const [isImportingRound, setIsImportingRound] = useState(false);
   const [importMessage, setImportMessage] = useState("");
   const [importError, setImportError] = useState("");
+  const [standingsFile, setStandingsFile] = useState(null);
+  const standingsFileInputRef = useRef(null);
+  const [isImportingStandings, setIsImportingStandings] = useState(false);
+  const [standingsImportMessage, setStandingsImportMessage] = useState("");
+  const [standingsImportError, setStandingsImportError] = useState("");
   const [isManualToolsOpen, setIsManualToolsOpen] = useState(false);
   const [isPlayersToolOpen, setIsPlayersToolOpen] = useState(false);
   const [isRoundsToolOpen, setIsRoundsToolOpen] = useState(false);
+  const [isStandingsToolOpen, setIsStandingsToolOpen] = useState(false);
   const [selectedMatchRoundId, setSelectedMatchRoundId] = useState(null);
 
   function getApiErrorMessage(error, fallbackMessage) {
@@ -112,11 +119,21 @@ export default function AdminTournamentPage() {
     }
   }
 
+  async function fetchStandings() {
+    try {
+      const response = await api.get(`/public/tournaments/${id}`);
+      setStandings(response.data.standings || []);
+    } catch {
+      setStandings([]);
+    }
+  }
+
   useEffect(() => {
     fetchTournament();
     fetchPlayers();
     fetchRounds();
     fetchMatches();
+    fetchStandings();
   }, [id]);
 
   async function handleCreatePlayer(event) {
@@ -351,6 +368,35 @@ export default function AdminTournamentPage() {
     }
   }
 
+  async function handleImportStandingsCsv(event) {
+    event.preventDefault();
+
+    if (!standingsFile) {
+      setStandingsImportError("Choose a standings CSV file to import.");
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append("file", standingsFile);
+
+    try {
+      setIsImportingStandings(true);
+      setStandingsImportError("");
+      setStandingsImportMessage("");
+      const response = await api.post(`/tournaments/${id}/import-standings-csv`, formData);
+      await fetchStandings();
+      setStandingsFile(null);
+      if (standingsFileInputRef.current) {
+        standingsFileInputRef.current.value = "";
+      }
+      setStandingsImportMessage(`Imported standings for ${response.data.players_imported} players.`);
+    } catch (error) {
+      setStandingsImportError(getApiErrorMessage(error, "Could not import standings CSV."));
+    } finally {
+      setIsImportingStandings(false);
+    }
+  }
+
   const publicPath = `/t/${id}`;
   const publicUrl = `${window.location.origin}${publicPath}`;
   const playerNames = Object.fromEntries(players.map((player) => [player.id, player.name]));
@@ -573,6 +619,38 @@ export default function AdminTournamentPage() {
         {importError ? <p className="mt-3 text-sm font-medium text-red-700">{importError}</p> : null}
       </section>
 
+      <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+        <h2 className="text-xl font-semibold text-gray-950">Import KTS Standings CSV</h2>
+
+        <form className="mt-4 grid gap-3 md:grid-cols-[1fr_auto]" onSubmit={handleImportStandingsCsv}>
+          <label className="flex flex-col gap-1 text-sm font-medium text-gray-700">
+            CSV file
+            <input
+              accept=".csv,text/csv"
+              className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-950 file:mr-3 file:rounded file:border-0 file:bg-gray-100 file:px-3 file:py-1 file:text-sm file:font-medium file:text-gray-700 hover:file:bg-gray-200"
+              onChange={(event) => {
+                setStandingsFile(event.target.files?.[0] || null);
+                setStandingsImportMessage("");
+                setStandingsImportError("");
+              }}
+              ref={standingsFileInputRef}
+              type="file"
+            />
+          </label>
+
+          <button
+            className="self-end rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 disabled:cursor-not-allowed disabled:bg-gray-400"
+            disabled={isImportingStandings}
+            type="submit"
+          >
+            {isImportingStandings ? "Importing..." : "Import standings"}
+          </button>
+        </form>
+
+        {standingsImportMessage ? <p className="mt-3 text-sm font-medium text-green-700">{standingsImportMessage}</p> : null}
+        {standingsImportError ? <p className="mt-3 text-sm font-medium text-red-700">{standingsImportError}</p> : null}
+      </section>
+
       <section className="rounded-lg border border-gray-200 bg-gray-50 p-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -712,6 +790,55 @@ export default function AdminTournamentPage() {
             </ul>
           ) : null}
             </>
+          ) : null}
+        </div>
+        <div className="order-4 self-start rounded-lg border border-gray-200 bg-white p-4 md:col-span-3">
+          <div className="flex items-center justify-between gap-4">
+            <button
+              className="text-left text-base font-semibold text-gray-950"
+              onClick={() => setIsStandingsToolOpen((isOpen) => !isOpen)}
+              type="button"
+            >
+              Standings — {standings.length} players
+            </button>
+            <button
+              className="rounded border border-gray-300 px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
+              onClick={() => setIsStandingsToolOpen((isOpen) => !isOpen)}
+              type="button"
+            >
+              {isStandingsToolOpen ? "Hide" : "Show"}
+            </button>
+          </div>
+
+          {isStandingsToolOpen ? (
+            standings.length > 0 ? (
+              <div className="mt-4 overflow-x-auto">
+                <table className="min-w-full text-left text-sm">
+                  <thead className="border-b border-gray-200 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                    <tr>
+                      <th className="whitespace-nowrap px-3 py-2">Rank</th>
+                      <th className="min-w-48 px-3 py-2">Player</th>
+                      <th className="whitespace-nowrap px-3 py-2">Points</th>
+                      <th className="whitespace-nowrap px-3 py-2">Tiebreaker</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {standings.map((standing) => (
+                      <tr key={standing.id}>
+                        <td className="whitespace-nowrap px-3 py-3 font-semibold text-gray-950">{standing.rank}</td>
+                        <td className="px-3 py-3 font-medium text-gray-950">
+                          {formatPlayerDisplayName(standing.short_name || standing.full_name)}
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-3 text-gray-700">{standing.points}</td>
+                        <td className="whitespace-nowrap px-3 py-3 text-gray-700">{standing.tiebreaker || "-"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="mt-4 text-sm text-gray-700">No standings imported yet.</p>
+            )
           ) : null}
         </div>
         <div className="order-1 self-start rounded-lg border border-gray-200 bg-white p-5 shadow-sm md:col-span-3">

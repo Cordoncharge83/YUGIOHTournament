@@ -3,7 +3,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Match, Player, Round, Tournament
+from app.models import Match, Player, Round, Standing, Tournament
 from app.schemas import PublicMatchRead, PublicTournamentRead
 
 router = APIRouter(prefix="/public", tags=["public"])
@@ -37,6 +37,13 @@ def get_public_tournament(tournament_id: int, db: Session = Depends(get_db)) -> 
             .order_by(Match.round_id, Match.table_number)
         )
     )
+    standings = list(
+        db.scalars(
+            select(Standing)
+            .where(Standing.tournament_id == tournament_id)
+            .order_by(Standing.rank)
+        )
+    )
 
     player_names = {player.id: player.name for player in players}
     round_numbers = {round_.id: round_.number for round_ in rounds}
@@ -59,4 +66,5 @@ def get_public_tournament(tournament_id: int, db: Session = Depends(get_db)) -> 
         players=players,
         rounds=rounds,
         matches=public_matches,
+        standings=standings,
     )

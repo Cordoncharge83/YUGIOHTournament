@@ -21,6 +21,7 @@ class Tournament(Base):
     rounds: Mapped[list[Round]] = relationship(back_populates="tournament", foreign_keys="Round.tournament_id")
     current_round: Mapped[Round | None] = relationship(foreign_keys=[current_round_id])
     matches: Mapped[list[Match]] = relationship(back_populates="tournament")
+    standings: Mapped[list[Standing]] = relationship(back_populates="tournament")
 
 
 class Player(Base):
@@ -76,3 +77,18 @@ class Match(Base):
         back_populates="matches_as_player_two",
         foreign_keys=[player_two_id],
     )
+
+
+class Standing(Base):
+    __tablename__ = "standings"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    tournament_id: Mapped[int] = mapped_column(ForeignKey("tournaments.id"), nullable=False)
+    rank: Mapped[int] = mapped_column(Integer, nullable=False)
+    full_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    short_name: Mapped[str | None] = mapped_column(String(255))
+    cossy_id: Mapped[str | None] = mapped_column(String(64))
+    points: Mapped[int] = mapped_column(Integer, nullable=False)
+    tiebreaker: Mapped[str | None] = mapped_column(String(64))
+
+    tournament: Mapped[Tournament] = relationship(back_populates="standings")

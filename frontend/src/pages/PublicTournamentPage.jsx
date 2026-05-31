@@ -43,6 +43,7 @@ export default function PublicTournamentPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
   const [selectedRoundId, setSelectedRoundId] = useState(null);
+  const [activeTab, setActiveTab] = useState("pairings");
   const [lastUpdated] = useState(() =>
     new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
   );
@@ -67,6 +68,7 @@ export default function PublicTournamentPage() {
   const tournament = tournamentData?.tournament;
   const rounds = tournamentData?.rounds || [];
   const matches = tournamentData?.matches || [];
+  const standings = tournamentData?.standings || [];
   const sortedRounds = [...rounds].sort((firstRound, secondRound) => firstRound.number - secondRound.number);
   const selectedRound = rounds.find((round) => round.id === selectedRoundId) || null;
   const selectedRoundMatches = selectedRound
@@ -95,15 +97,39 @@ export default function PublicTournamentPage() {
       </header>
 
       <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <h2 className="text-lg font-semibold text-gray-950">Rounds and matches</h2>
+        <div className="flex overflow-x-auto overflow-y-hidden border-b border-gray-200">
+          <button
+            className={`shrink-0 px-4 py-2 text-sm font-semibold ${
+              activeTab === "pairings"
+                ? "border-b-2 border-blue-700 text-blue-700"
+                : "text-gray-500 hover:text-gray-800"
+            }`}
+            onClick={() => setActiveTab("pairings")}
+            type="button"
+          >
+            Pairings
+          </button>
+          <button
+            className={`shrink-0 px-4 py-2 text-sm font-semibold ${
+              activeTab === "standings"
+                ? "border-b-2 border-blue-700 text-blue-700"
+                : "text-gray-500 hover:text-gray-800"
+            }`}
+            onClick={() => setActiveTab("standings")}
+            type="button"
+          >
+            Standings
+          </button>
         </div>
 
         {error ? <p className="mt-4 text-sm font-medium text-red-700">{error}</p> : null}
         {isLoading ? <p className="mt-4 text-gray-700">Loading tournament...</p> : null}
-        {!isLoading && sortedRounds.length === 0 ? <p className="mt-4 text-gray-700">No rounds yet.</p> : null}
 
-        {sortedRounds.length > 0 ? (
+        {activeTab === "pairings" && !isLoading && sortedRounds.length === 0 ? (
+          <p className="mt-4 text-gray-700">No rounds yet.</p>
+        ) : null}
+
+        {activeTab === "pairings" && sortedRounds.length > 0 ? (
           <div className="mt-4">
             <div className="flex overflow-x-auto overflow-y-hidden">
               {sortedRounds.map((round) => {
@@ -134,7 +160,7 @@ export default function PublicTournamentPage() {
           </div>
         ) : null}
 
-        {selectedRound ? (
+        {activeTab === "pairings" && selectedRound ? (
           <section className="rounded-b-lg rounded-tr-lg border border-gray-300 bg-white p-4">
             <div className="flex flex-wrap items-center gap-2">
               <h3 className="text-xl font-semibold text-gray-950">Round {selectedRound.number}</h3>
@@ -192,6 +218,35 @@ export default function PublicTournamentPage() {
               </ul>
             ) : null}
           </section>
+        ) : null}
+
+        {activeTab === "standings" && !isLoading && standings.length === 0 ? (
+          <p className="mt-4 text-gray-700">No standings imported yet.</p>
+        ) : null}
+
+        {activeTab === "standings" && standings.length > 0 ? (
+          <div className="mt-4 overflow-x-auto">
+            <table className="min-w-full text-left text-sm">
+              <thead className="border-b border-gray-200 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                <tr>
+                  <th className="whitespace-nowrap px-3 py-2">Rank</th>
+                  <th className="min-w-48 px-3 py-2">Player</th>
+                  <th className="whitespace-nowrap px-3 py-2">Points</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {standings.map((standing) => (
+                  <tr key={standing.id}>
+                    <td className="whitespace-nowrap px-3 py-3 font-semibold text-gray-950">{standing.rank}</td>
+                    <td className="px-3 py-3 font-medium text-gray-950">
+                      {formatPlayerDisplayName(standing.short_name || standing.full_name)}
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-3 text-gray-700">{standing.points}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         ) : null}
       </section>
     </main>
