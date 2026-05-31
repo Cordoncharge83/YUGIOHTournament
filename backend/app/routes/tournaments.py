@@ -288,7 +288,7 @@ async def import_round_csv(
                 table_number=table_number,
                 player_one_id=player_one.id,
                 player_two_id=player_two.id if player_two else None,
-                result_status="UNREPORTED",
+                result_status="PLAYER_ONE_WIN" if notes == BYE_NOTE else "UNREPORTED",
                 notes=notes,
             )
         )

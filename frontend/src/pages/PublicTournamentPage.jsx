@@ -14,6 +14,10 @@ function getResultDisplay(match) {
     ? "BYE"
     : formatPlayerDisplayName(match.player_two_name) || "TBD";
 
+  if (match.notes === "BYE") {
+    return "Automatic Win";
+  }
+
   if (resultStatus === "PLAYER_ONE_WIN") {
     return `${playerOneName} defeated ${playerTwoName}`;
   }
@@ -150,7 +154,8 @@ export default function PublicTournamentPage() {
                   const playerTwoName = match.notes === "BYE" && !match.player_two_name
                     ? "BYE"
                     : formatPlayerDisplayName(match.player_two_name) || "TBD";
-                  const isReported = (match.result_status || "UNREPORTED") !== "UNREPORTED";
+                  const isBye = match.notes === "BYE";
+                  const isReported = isBye || (match.result_status || "UNREPORTED") !== "UNREPORTED";
 
                   return (
                     <li
@@ -171,9 +176,13 @@ export default function PublicTournamentPage() {
                         </span>
                       </div>
 
-                      <p className="mt-4 text-sm font-medium text-gray-600">
-                        {playerOneName} vs {playerTwoName}
-                      </p>
+                      {isBye ? (
+                        <p className="mt-4 text-sm font-medium text-gray-600">{playerOneName} has a BYE</p>
+                      ) : (
+                        <p className="mt-4 text-sm font-medium text-gray-600">
+                          {playerOneName} vs {playerTwoName}
+                        </p>
+                      )}
                       <p className={`mt-2 text-base font-semibold ${isReported ? "text-gray-950" : "text-yellow-800"}`}>
                         {getResultDisplay(match)}
                       </p>

@@ -39,7 +39,6 @@ export default function AdminTournamentPage() {
   const [isCreatingMatch, setIsCreatingMatch] = useState(false);
   const [savingMatchId, setSavingMatchId] = useState(null);
   const [matchesError, setMatchesError] = useState("");
-  const [matchSort, setMatchSort] = useState("newest");
   const [copyMessage, setCopyMessage] = useState("");
   const [importRoundNumber, setImportRoundNumber] = useState("1");
   const [importFile, setImportFile] = useState(null);
@@ -50,6 +49,9 @@ export default function AdminTournamentPage() {
   const [importMessage, setImportMessage] = useState("");
   const [importError, setImportError] = useState("");
   const [isManualToolsOpen, setIsManualToolsOpen] = useState(false);
+  const [isPlayersToolOpen, setIsPlayersToolOpen] = useState(false);
+  const [isRoundsToolOpen, setIsRoundsToolOpen] = useState(false);
+  const [selectedMatchRoundId, setSelectedMatchRoundId] = useState(null);
 
   function getApiErrorMessage(error, fallbackMessage) {
     const detail = error.response?.data?.detail;
@@ -171,6 +173,7 @@ export default function AdminTournamentPage() {
     try {
       setRoundsError("");
       await api.patch(`/tournaments/${id}/current-round`, { round_id: roundId });
+      setSelectedMatchRoundId(roundId);
       await fetchTournament();
       await fetchRounds();
     } catch (error) {
@@ -209,7 +212,7 @@ export default function AdminTournamentPage() {
         player_two_id: playerTwoId,
       });
       setMatchForm({
-        round_id: "",
+        round_id: selectedMatchRoundId ? String(selectedMatchRoundId) : "",
         table_number: "",
         player_one_id: "",
         player_two_id: "",
@@ -332,6 +335,7 @@ export default function AdminTournamentPage() {
       setImportMessage("");
       const response = await api.post(`/tournaments/${id}/import-round-csv`, buildImportFormData(roundNumber));
       await Promise.all([fetchPlayers(), fetchRounds(), fetchMatches(), fetchTournament()]);
+      setSelectedMatchRoundId(null);
       setImportFile(null);
       setImportPreview(null);
       if (importFileInputRef.current) {
@@ -352,24 +356,56 @@ export default function AdminTournamentPage() {
   const playerNames = Object.fromEntries(players.map((player) => [player.id, player.name]));
   const playerDisplayNames = Object.fromEntries(players.map((player) => [player.id, formatPlayerDisplayName(player.name)]));
   const roundNumbers = Object.fromEntries(rounds.map((round) => [round.id, round.number]));
+  const sortedRounds = [...rounds].sort((firstRound, secondRound) => firstRound.number - secondRound.number);
   const currentRound = rounds.find((round) => round.id === tournament?.current_round_id) || null;
   const currentRoundUnreportedCount = currentRound
     ? matches.filter((match) => match.round_id === currentRound.id && (match.result_status || "UNREPORTED") === "UNREPORTED").length
     : null;
-  const sortedMatches = [...matches].sort((firstMatch, secondMatch) => {
-    const firstRoundNumber = roundNumbers[firstMatch.round_id] || 0;
-    const secondRoundNumber = roundNumbers[secondMatch.round_id] || 0;
-    const firstTableNumber = firstMatch.table_number || 0;
-    const secondTableNumber = secondMatch.table_number || 0;
+  const selectedMatchRound = rounds.find((round) => round.id === selectedMatchRoundId) || null;
+  const selectedRoundMatches = selectedMatchRound
+    ? matches
+        .filter((match) => match.round_id === selectedMatchRound.id)
+        .sort((firstMatch, secondMatch) => (firstMatch.table_number || 0) - (secondMatch.table_number || 0))
+    : [];
+  const selectedRoundUnreportedCount = selectedRoundMatches.filter(
+    (match) => (match.result_status || "UNREPORTED") === "UNREPORTED",
+  ).length;
 
-    if (firstRoundNumber !== secondRoundNumber) {
-      return matchSort === "newest"
-        ? secondRoundNumber - firstRoundNumber
-        : firstRoundNumber - secondRoundNumber;
+  useEffect(() => {
+    if (rounds.length === 0) {
+      setSelectedMatchRoundId(null);
+      return;
     }
 
-    return firstTableNumber - secondTableNumber;
-  });
+    if (selectedMatchRoundId && rounds.some((round) => round.id === selectedMatchRoundId)) {
+      return;
+    }
+
+    const currentRoundCandidate = tournament?.current_round_id
+      ? rounds.find((round) => round.id === tournament.current_round_id)
+      : null;
+    const highestRound = [...rounds].sort((firstRound, secondRound) => secondRound.number - firstRound.number)[0];
+    const fallbackRound = highestRound || [...rounds].sort((firstRound, secondRound) => firstRound.number - secondRound.number)[0];
+    setSelectedMatchRoundId((currentRoundCandidate || fallbackRound).id);
+  }, [rounds, selectedMatchRoundId, tournament?.current_round_id]);
+
+  useEffect(() => {
+    if (!selectedMatchRoundId) {
+      return;
+    }
+
+    setMatchForm((currentForm) => {
+      if (currentForm.round_id === String(selectedMatchRoundId)) {
+        return currentForm;
+      }
+
+      return {
+        ...currentForm,
+        round_id: String(selectedMatchRoundId),
+      };
+    });
+  }, [selectedMatchRoundId]);
+
   const getMatchPlayerTwoName = (match) => {
     if (match.notes === "BYE" && match.player_two_id == null) {
       return "BYE";
@@ -378,6 +414,10 @@ export default function AdminTournamentPage() {
     return playerDisplayNames[match.player_two_id] || "Player two";
   };
   const getMatchResultLabel = (match) => {
+    if (match.notes === "BYE") {
+      return "BYE — Automatic Win";
+    }
+
     const resultStatus = match.result_status || "UNREPORTED";
     const playerOneName = playerDisplayNames[match.player_one_id] || "Player one";
     const playerTwoName = getMatchPlayerTwoName(match);
@@ -458,8 +498,7 @@ export default function AdminTournamentPage() {
 
       <section className="rounded-lg border border-blue-200 bg-white p-5 shadow-sm">
         <div>
-          <p className="text-sm font-medium uppercase tracking-wide text-blue-700">Primary workflow</p>
-          <h2 className="mt-1 text-xl font-semibold text-gray-950">Import KTS Round CSV</h2>
+          <h2 className="text-xl font-semibold text-gray-950">Import Round from KTS</h2>
         </div>
 
         <form className="mt-4 grid gap-3 md:grid-cols-[180px_1fr_auto]" onSubmit={handlePreviewRoundCsv}>
@@ -537,8 +576,7 @@ export default function AdminTournamentPage() {
       <section className="rounded-lg border border-gray-200 bg-gray-50 p-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h2 className="text-base font-semibold text-gray-950">Manual tools / fallback</h2>
-            <p className="mt-1 text-sm text-gray-600">Use these only when a round cannot be imported from KTS.</p>
+            <h2 className="text-base font-semibold text-gray-950">Tournament Management</h2>
           </div>
           <button
             className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
@@ -550,14 +588,30 @@ export default function AdminTournamentPage() {
         </div>
 
         {isManualToolsOpen ? (
-          <div className="mt-4 grid gap-4 md:grid-cols-3">
-        <div className="rounded-lg border border-gray-200 bg-white p-5">
+          <div className="mt-4 grid items-start gap-4 md:grid-cols-3">
+        <div className="order-2 self-start rounded-lg border border-gray-200 bg-white p-4">
           <div className="flex items-center justify-between gap-4">
-            <h2 className="text-lg font-semibold text-gray-950">Players</h2>
-            <button className="text-sm font-medium text-blue-700 hover:text-blue-900" onClick={fetchPlayers} type="button">
-              Refresh
+            <button
+              className="text-left text-base font-semibold text-gray-950"
+              onClick={() => setIsPlayersToolOpen((isOpen) => !isOpen)}
+              type="button"
+            >
+              Players — {players.length} total
+            </button>
+            <button
+              className="rounded border border-gray-300 px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
+              onClick={() => setIsPlayersToolOpen((isOpen) => !isOpen)}
+              type="button"
+            >
+              {isPlayersToolOpen ? "Hide" : "Show"}
             </button>
           </div>
+
+          {isPlayersToolOpen ? (
+            <>
+          <button className="mt-4 text-sm font-medium text-blue-700 hover:text-blue-900" onClick={fetchPlayers} type="button">
+            Refresh
+          </button>
 
           <form className="mt-4 flex gap-2" onSubmit={handleCreatePlayer}>
             <input
@@ -589,14 +643,32 @@ export default function AdminTournamentPage() {
               ))}
             </ul>
           ) : null}
+            </>
+          ) : null}
         </div>
-        <div className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+        <div className="order-3 self-start rounded-lg border border-gray-200 bg-white p-4">
           <div className="flex items-center justify-between gap-4">
-            <h2 className="text-lg font-semibold text-gray-950">Rounds</h2>
-            <button className="text-sm font-medium text-blue-700 hover:text-blue-900" onClick={fetchRounds} type="button">
-              Refresh
+            <button
+              className="text-left text-base font-semibold text-gray-950"
+              onClick={() => setIsRoundsToolOpen((isOpen) => !isOpen)}
+              type="button"
+            >
+              Rounds — {rounds.length} total
+            </button>
+            <button
+              className="rounded border border-gray-300 px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
+              onClick={() => setIsRoundsToolOpen((isOpen) => !isOpen)}
+              type="button"
+            >
+              {isRoundsToolOpen ? "Hide" : "Show"}
             </button>
           </div>
+
+          {isRoundsToolOpen ? (
+            <>
+          <button className="mt-4 text-sm font-medium text-blue-700 hover:text-blue-900" onClick={fetchRounds} type="button">
+            Refresh
+          </button>
 
           <button
             className="mt-4 w-full rounded-md bg-blue-700 px-3 py-2 text-sm font-medium text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:bg-gray-400"
@@ -639,28 +711,57 @@ export default function AdminTournamentPage() {
               ))}
             </ul>
           ) : null}
+            </>
+          ) : null}
         </div>
-        <div className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm md:col-span-3">
+        <div className="order-1 self-start rounded-lg border border-gray-200 bg-white p-5 shadow-sm md:col-span-3">
           <div className="flex items-center justify-between gap-4">
             <h2 className="text-lg font-semibold text-gray-950">Matches</h2>
             <div className="flex items-center gap-3">
-              <button
-                className="rounded border border-gray-300 px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
-                onClick={() => setMatchSort((currentSort) => (currentSort === "newest" ? "oldest" : "newest"))}
-                type="button"
-              >
-                {matchSort === "newest" ? "Newest first" : "Oldest first"}
-              </button>
               <button className="text-sm font-medium text-blue-700 hover:text-blue-900" onClick={fetchMatches} type="button">
                 Refresh
               </button>
             </div>
           </div>
 
+          {sortedRounds.length > 0 ? (
+            <div className="mt-4">
+              <div className="flex overflow-x-auto overflow-y-hidden">
+                {sortedRounds.map((round) => {
+                  const isActive = selectedMatchRoundId === round.id;
+
+                  return (
+                    <button
+                      className={`shrink-0 rounded-t-md border px-3 py-2 text-sm font-semibold ${
+                        isActive
+                          ? "border-gray-300 border-b-white bg-white text-gray-950"
+                          : "border-gray-200 bg-gray-50 text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+                      }`}
+                      key={round.id}
+                      onClick={() => setSelectedMatchRoundId(round.id)}
+                      type="button"
+                    >
+                      Round {round.number}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {selectedMatchRound ? (
+                <p className="rounded-b-md border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-700">
+                  Round {selectedMatchRound.number} — {selectedRoundMatches.length} matches — {selectedRoundUnreportedCount} unreported
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+
           <form className="mt-4 grid gap-3 md:grid-cols-5" onSubmit={handleCreateMatch}>
             <select
               className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-950 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
-              onChange={(event) => updateMatchForm("round_id", event.target.value)}
+              onChange={(event) => {
+                updateMatchForm("round_id", event.target.value);
+                setSelectedMatchRoundId(Number(event.target.value));
+              }}
               value={matchForm.round_id}
             >
               <option disabled value="">
@@ -720,53 +821,69 @@ export default function AdminTournamentPage() {
           {matchesError ? <p className="mt-3 text-sm font-medium text-red-700">{matchesError}</p> : null}
           {isLoadingMatches ? <p className="mt-4 text-sm text-gray-700">Loading matches...</p> : null}
           {!isLoadingMatches && matches.length === 0 ? <p className="mt-4 text-sm text-gray-700">No matches yet.</p> : null}
+          {!isLoadingMatches && matches.length > 0 && selectedMatchRound && selectedRoundMatches.length === 0 ? (
+            <p className="mt-4 text-sm text-gray-700">No matches for this round.</p>
+          ) : null}
 
-          {matches.length > 0 ? (
+          {selectedRoundMatches.length > 0 ? (
             <ul className="mt-4 divide-y divide-gray-200">
-              {sortedMatches.map((match) => (
-                <li className="grid gap-3 py-4 md:grid-cols-[1fr_auto_auto]" key={match.id}>
-                  <div>
-                    <p className="text-sm font-semibold text-gray-950">
-                      Round {roundNumbers[match.round_id] || "?"} - Table {match.table_number || "-"}
-                    </p>
-                    <p className="mt-1 text-sm text-gray-700">
-                      {playerDisplayNames[match.player_one_id] || "Player one"} vs {getMatchPlayerTwoName(match)}
-                    </p>
-                    <p className="mt-1 text-sm font-medium text-gray-600">Result: {getMatchResultLabel(match)}</p>
-                  </div>
+              {selectedRoundMatches.map((match) => {
+                const isBye = match.notes === "BYE";
+                const playerOneName = playerDisplayNames[match.player_one_id] || "Player one";
 
-                  <div className="flex flex-wrap items-end gap-2">
-                    {RESULT_OPTIONS.map((option) => {
-                      const isSelected = (match.result_status || "UNREPORTED") === option.value;
+                return (
+                  <li className="grid gap-3 py-4 md:grid-cols-[1fr_auto_auto]" key={match.id}>
+                    <div>
+                      <p className="text-sm font-semibold text-gray-950">
+                        Round {roundNumbers[match.round_id] || "?"} - Table {match.table_number || "-"}
+                      </p>
+                      <p className="mt-1 text-sm text-gray-700">
+                        {isBye ? `${playerOneName} has a BYE` : `${playerOneName} vs ${getMatchPlayerTwoName(match)}`}
+                      </p>
+                      <p className="mt-1 text-sm font-medium text-gray-600">Result: {getMatchResultLabel(match)}</p>
+                    </div>
 
-                      return (
-                        <button
-                          className={`rounded-md border px-2.5 py-1.5 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-60 ${
-                            isSelected
-                              ? "border-blue-700 bg-blue-700 text-white"
-                              : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
-                          }`}
-                          disabled={savingMatchId === match.id}
-                          key={option.value}
-                          onClick={() => handleSaveResult(match, option.value)}
-                          type="button"
-                        >
-                          {savingMatchId === match.id && isSelected ? "Saving..." : option.label}
-                        </button>
-                      );
-                    })}
-                  </div>
+                    {isBye ? (
+                      <div className="flex items-end">
+                        <span className="rounded-md bg-green-100 px-2.5 py-1.5 text-xs font-semibold text-green-800">
+                          BYE — Automatic Win
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="flex flex-wrap items-end gap-2">
+                        {RESULT_OPTIONS.map((option) => {
+                          const isSelected = (match.result_status || "UNREPORTED") === option.value;
 
-                  <button
-                    aria-label={`Delete match ${match.id}`}
-                    className="flex h-8 w-8 items-center justify-center self-end rounded border border-red-200 text-lg font-semibold leading-none text-red-700 hover:bg-red-50"
-                    onClick={() => handleDeleteMatch(match.id)}
-                    type="button"
-                  >
-                    x
-                  </button>
-                </li>
-              ))}
+                          return (
+                            <button
+                              className={`rounded-md border px-2.5 py-1.5 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-60 ${
+                                isSelected
+                                  ? "border-blue-700 bg-blue-700 text-white"
+                                  : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+                              }`}
+                              disabled={savingMatchId === match.id}
+                              key={option.value}
+                              onClick={() => handleSaveResult(match, option.value)}
+                              type="button"
+                            >
+                              {savingMatchId === match.id && isSelected ? "Saving..." : option.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    <button
+                      aria-label={`Delete match ${match.id}`}
+                      className="flex h-8 w-8 items-center justify-center self-end rounded border border-red-200 text-lg font-semibold leading-none text-red-700 hover:bg-red-50"
+                      onClick={() => handleDeleteMatch(match.id)}
+                      type="button"
+                    >
+                      x
+                    </button>
+                  </li>
+                );
+              })}
             </ul>
           ) : null}
         </div>
