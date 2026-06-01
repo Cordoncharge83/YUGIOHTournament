@@ -54,6 +54,11 @@ export default function AdminTournamentPage() {
   const [isImportingStandings, setIsImportingStandings] = useState(false);
   const [standingsImportMessage, setStandingsImportMessage] = useState("");
   const [standingsImportError, setStandingsImportError] = useState("");
+  const [tournamentFile, setTournamentFile] = useState(null);
+  const tournamentFileInputRef = useRef(null);
+  const [isImportingTournamentFile, setIsImportingTournamentFile] = useState(false);
+  const [tournamentFileImportMessage, setTournamentFileImportMessage] = useState("");
+  const [tournamentFileImportError, setTournamentFileImportError] = useState("");
   const [isManualToolsOpen, setIsManualToolsOpen] = useState(false);
   const [isPlayersToolOpen, setIsPlayersToolOpen] = useState(false);
   const [isRoundsToolOpen, setIsRoundsToolOpen] = useState(false);
@@ -121,8 +126,8 @@ export default function AdminTournamentPage() {
 
   async function fetchStandings() {
     try {
-      const response = await api.get(`/public/tournaments/${id}`);
-      setStandings(response.data.standings || []);
+      const response = await api.get(`/tournaments/${id}/standings`);
+      setStandings(response.data || []);
     } catch {
       setStandings([]);
     }
@@ -397,6 +402,38 @@ export default function AdminTournamentPage() {
     }
   }
 
+  async function handleImportTournamentFile(event) {
+    event.preventDefault();
+
+    if (!tournamentFile) {
+      setTournamentFileImportError("Choose a .Tournament or XML file to import.");
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append("file", tournamentFile);
+
+    try {
+      setIsImportingTournamentFile(true);
+      setTournamentFileImportError("");
+      setTournamentFileImportMessage("");
+      const response = await api.post(`/tournaments/${id}/import-tournament-file`, formData);
+      await Promise.all([fetchTournament(), fetchPlayers(), fetchRounds(), fetchMatches(), fetchStandings()]);
+      setSelectedMatchRoundId(null);
+      setTournamentFile(null);
+      if (tournamentFileInputRef.current) {
+        tournamentFileInputRef.current.value = "";
+      }
+      setTournamentFileImportMessage(
+        `Imported ${response.data.players_imported} players, ${response.data.rounds_imported} rounds, ${response.data.matches_imported} matches, and ${response.data.standings_imported} standings entries.`,
+      );
+    } catch (error) {
+      setTournamentFileImportError(getApiErrorMessage(error, "Could not import KTS tournament file."));
+    } finally {
+      setIsImportingTournamentFile(false);
+    }
+  }
+
   const publicPath = `/t/${id}`;
   const publicUrl = `${window.location.origin}${publicPath}`;
   const playerNames = Object.fromEntries(players.map((player) => [player.id, player.name]));
@@ -540,6 +577,46 @@ export default function AdminTournamentPage() {
             <QRCodeSVG value={publicUrl} size={144} />
           </div>
         </div>
+      </section>
+
+      <section className="rounded-lg border border-blue-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-wrap items-center gap-2">
+          <h2 className="text-xl font-semibold text-gray-950">Import KTS Tournament File</h2>
+          <span className="rounded bg-yellow-100 px-2 py-1 text-xs font-semibold uppercase tracking-wide text-yellow-900">
+            Experimental
+          </span>
+        </div>
+        <p className="mt-2 text-sm text-gray-700">
+          Updates this tournament from the uploaded KTS file, replacing existing players, rounds, matches, and standings.
+        </p>
+
+        <form className="mt-4 grid gap-3 md:grid-cols-[1fr_auto]" onSubmit={handleImportTournamentFile}>
+          <label className="flex flex-col gap-1 text-sm font-medium text-gray-700">
+            .Tournament or XML file
+            <input
+              accept=".Tournament,.tournament,.xml,application/xml,text/xml"
+              className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-950 file:mr-3 file:rounded file:border-0 file:bg-gray-100 file:px-3 file:py-1 file:text-sm file:font-medium file:text-gray-700 hover:file:bg-gray-200"
+              onChange={(event) => {
+                setTournamentFile(event.target.files?.[0] || null);
+                setTournamentFileImportMessage("");
+                setTournamentFileImportError("");
+              }}
+              ref={tournamentFileInputRef}
+              type="file"
+            />
+          </label>
+
+          <button
+            className="self-end rounded-md bg-blue-700 px-4 py-2 text-sm font-medium text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:bg-gray-400"
+            disabled={isImportingTournamentFile}
+            type="submit"
+          >
+            {isImportingTournamentFile ? "Importing..." : "Import file"}
+          </button>
+        </form>
+
+        {tournamentFileImportMessage ? <p className="mt-3 text-sm font-medium text-green-700">{tournamentFileImportMessage}</p> : null}
+        {tournamentFileImportError ? <p className="mt-3 text-sm font-medium text-red-700">{tournamentFileImportError}</p> : null}
       </section>
 
       <section className="rounded-lg border border-blue-200 bg-white p-5 shadow-sm">
