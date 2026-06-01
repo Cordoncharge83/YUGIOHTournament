@@ -41,6 +41,14 @@ class StandingsCsvImportSummary(BaseModel):
     top_player_points: int | None
 
 
+class TournamentFileImportSummary(BaseModel):
+    players_imported: int
+    rounds_imported: int
+    matches_imported: int
+    standings_imported: int
+    current_round: int | None
+
+
 class RoundCsvPreviewSummary(BaseModel):
     round_number: int
     matches_count: int
@@ -124,9 +132,20 @@ class StandingRead(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class PublicStandingRead(BaseModel):
+    id: int
+    tournament_id: int
+    rank: int
+    full_name: str
+    short_name: str | None
+    points: int
+
+    model_config = {"from_attributes": True}
+
+
 class PublicTournamentRead(BaseModel):
     tournament: TournamentRead
     players: list[PlayerRead]
     rounds: list[RoundRead]
     matches: list[PublicMatchRead]
-    standings: list[StandingRead]
+    standings: list[PublicStandingRead]

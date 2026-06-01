@@ -1,6 +1,9 @@
 import csv
 from io import StringIO
+from xml.etree.ElementTree import Element, ParseError
 
+from defusedxml.common import DefusedXmlException
+from defusedxml.ElementTree import fromstring
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -10,9 +13,11 @@ from app.models import Match, Player, Round, Standing, Tournament
 from app.schemas import (
     RoundCsvImportSummary,
     RoundCsvPreviewSummary,
+    StandingRead,
     StandingsCsvImportSummary,
     TournamentCreate,
     TournamentCurrentRoundUpdate,
+    TournamentFileImportSummary,
     TournamentRead,
 )
 
@@ -24,6 +29,213 @@ BYE_NOTE = "BYE"
 def is_bye(value: str | None) -> bool:
     normalized_value = (value or "").strip().casefold().replace(" ", "")
     return normalized_value == KTS_BYE_VALUE.casefold()
+
+
+def xml_local_name(tag: str) -> str:
+    return tag.rsplit("}", 1)[-1]
+
+
+def direct_child(element: Element, name: str) -> Element | None:
+    for child in list(element):
+        if xml_local_name(child.tag) == name:
+            return child
+
+    return None
+
+
+def direct_children(element: Element, name: str) -> list[Element]:
+    return [child for child in list(element) if xml_local_name(child.tag) == name]
+
+
+def child_text(element: Element, name: str) -> str | None:
+    child = direct_child(element, name)
+    if child is None or child.text is None:
+        return None
+
+    value = child.text.strip()
+    return value or None
+
+
+def nested_child_text(element: Element, path: tuple[str, ...]) -> str | None:
+    current = element
+    for name in path:
+        next_element = direct_child(current, name)
+        if next_element is None:
+            return None
+        current = next_element
+
+    if current.text is None:
+        return None
+
+    value = current.text.strip()
+    return value or None
+
+
+def parse_optional_int(value: str | None, field_name: str) -> int | None:
+    if value is None or not value.strip():
+        return None
+
+    try:
+        return int(value.strip())
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"KTS file has an invalid {field_name}",
+        ) from exc
+
+
+def kts_player_name(tourn_player: Element) -> str | None:
+    first_name = nested_child_text(tourn_player, ("Player", "FirstName")) or ""
+    last_name = nested_child_text(tourn_player, ("Player", "LastName")) or ""
+    first_name = first_name.strip()
+    last_name = last_name.strip()
+
+    if last_name and first_name:
+        return f"{last_name}, {first_name}"
+    if last_name:
+        return last_name
+    if first_name:
+        return first_name
+
+    return None
+
+
+def kts_match_player_id(player_element: Element | None) -> str | None:
+    if player_element is None:
+        return None
+
+    player_id = child_text(player_element, "ID")
+    if player_id:
+        return player_id
+
+    if player_element.text:
+        player_id = player_element.text.strip()
+        if player_id:
+            return player_id
+
+    return None
+
+
+def kts_result_status(status_value: str | None, winner_id: str | None, player_one_id: str | None, player_two_id: str | None) -> str:
+    normalized_status = (status_value or "").strip().casefold().replace(" ", "")
+    normalized_winner = (winner_id or "").strip()
+
+    if normalized_status == "draw":
+        return "DRAW"
+    if normalized_status == "doubleloss":
+        return "DOUBLE_LOSS"
+    if normalized_winner and player_one_id and normalized_winner == player_one_id:
+        return "PLAYER_ONE_WIN"
+    if normalized_winner and player_two_id and normalized_winner == player_two_id:
+        return "PLAYER_TWO_WIN"
+
+    return "UNREPORTED"
+
+
+async def read_xml_upload(file: UploadFile) -> Element:
+    contents = await file.read()
+    try:
+        return fromstring(contents)
+    except (DefusedXmlException, ParseError) as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="KTS file must be valid XML") from exc
+
+
+def parse_tournament_file(root: Element) -> dict:
+    if xml_local_name(root.tag) != "Tournament":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="KTS XML root must be Tournament")
+
+    tournament_players = direct_child(root, "TournamentPlayers")
+    if tournament_players is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="KTS file does not contain TournamentPlayers")
+
+    parsed_players: list[dict] = []
+    standings_rows: list[dict] = []
+    for tourn_player in direct_children(tournament_players, "TournPlayer"):
+        player_id = nested_child_text(tourn_player, ("Player", "ID"))
+        player_name = kts_player_name(tourn_player)
+        if not player_id or not player_name or is_bye(player_id) or is_bye(player_name):
+            continue
+
+        rank = parse_optional_int(child_text(tourn_player, "Rank"), "player rank")
+        raw_points = parse_optional_int(child_text(tourn_player, "Points"), "player points")
+        visible_points = parse_optional_int(child_text(tourn_player, "Wins"), "player wins")
+        parsed_players.append({"kts_id": player_id, "name": player_name})
+
+        if rank is not None and visible_points is not None:
+            standings_rows.append(
+                {
+                    "rank": rank,
+                    "full_name": player_name,
+                    "short_name": player_name,
+                    "cossy_id": player_id,
+                    "points": visible_points,
+                    "tiebreaker": str(raw_points) if raw_points is not None else None,
+                }
+            )
+
+    parsed_matches: list[dict] = []
+    round_numbers: set[int] = set()
+    matches_element = direct_child(root, "Matches")
+    if matches_element is not None:
+        for tourn_match in direct_children(matches_element, "TournMatch"):
+            round_number = parse_optional_int(child_text(tourn_match, "Round"), "match round")
+            if round_number is None or round_number < 1:
+                continue
+
+            table_number = parse_optional_int(child_text(tourn_match, "Table"), "table number")
+            match_players = direct_children(tourn_match, "Player")
+            player_one_kts_id = kts_match_player_id(match_players[0] if len(match_players) > 0 else None)
+            player_two_kts_id = kts_match_player_id(match_players[1] if len(match_players) > 1 else None)
+
+            if is_bye(player_one_kts_id):
+                player_one_kts_id = None
+            if is_bye(player_two_kts_id):
+                player_two_kts_id = None
+            if not player_one_kts_id and not player_two_kts_id:
+                continue
+
+            notes = None
+            if not player_one_kts_id:
+                player_one_kts_id, player_two_kts_id = player_two_kts_id, None
+                notes = BYE_NOTE
+            elif not player_two_kts_id:
+                notes = BYE_NOTE
+
+            winner_id = kts_match_player_id(direct_child(tourn_match, "Winner"))
+            result_status = kts_result_status(
+                child_text(tourn_match, "Status"),
+                winner_id,
+                player_one_kts_id,
+                player_two_kts_id,
+            )
+            if notes == BYE_NOTE and result_status == "UNREPORTED":
+                result_status = "PLAYER_ONE_WIN"
+
+            round_numbers.add(round_number)
+            parsed_matches.append(
+                {
+                    "round_number": round_number,
+                    "table_number": table_number,
+                    "player_one_kts_id": player_one_kts_id,
+                    "player_two_kts_id": player_two_kts_id,
+                    "result_status": result_status,
+                    "notes": notes,
+                }
+            )
+
+    current_round = parse_optional_int(child_text(root, "CurrentRound"), "current round")
+    if current_round is not None and current_round > 0:
+        round_numbers.add(current_round)
+
+    return {
+        "name": child_text(root, "Name"),
+        "kts_id": child_text(root, "ID"),
+        "current_round": current_round if current_round and current_round > 0 else None,
+        "players": parsed_players,
+        "matches": parsed_matches,
+        "round_numbers": sorted(round_numbers),
+        "standings": sorted(standings_rows, key=lambda standing: int(standing["rank"])),
+    }
 
 
 def parse_round_csv(csv_text: str) -> list[tuple[int, str, str | None, str | None]]:
@@ -204,6 +416,16 @@ def get_tournament(tournament_id: int, db: Session = Depends(get_db)) -> Tournam
 @router.get("", response_model=list[TournamentRead])
 def list_tournaments(db: Session = Depends(get_db)) -> list[Tournament]:
     return list(db.scalars(select(Tournament).order_by(Tournament.id)))
+
+
+@router.get("/{tournament_id}/standings", response_model=list[StandingRead])
+def list_tournament_standings(tournament_id: int, db: Session = Depends(get_db)) -> list[Standing]:
+    tournament = db.get(Tournament, tournament_id)
+    if tournament is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
+
+    statement = select(Standing).where(Standing.tournament_id == tournament_id).order_by(Standing.rank)
+    return list(db.scalars(statement))
 
 
 @router.patch("/{tournament_id}/current-round", response_model=TournamentRead)
@@ -391,4 +613,98 @@ async def import_standings_csv(
         players_imported=len(standings_rows),
         top_player_name=str(top_player["short_name"] or top_player["full_name"]),
         top_player_points=int(top_player["points"]),
+    )
+
+
+@router.post("/{tournament_id}/import-tournament-file", response_model=TournamentFileImportSummary)
+async def import_tournament_file(
+    tournament_id: int,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+) -> TournamentFileImportSummary:
+    tournament = db.get(Tournament, tournament_id)
+    if tournament is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
+
+    parsed_file = parse_tournament_file(await read_xml_upload(file))
+
+    tournament.current_round_id = None
+    if parsed_file["name"]:
+        tournament.name = parsed_file["name"]
+    db.flush()
+
+    for match in list(db.scalars(select(Match).where(Match.tournament_id == tournament_id))):
+        db.delete(match)
+    for standing in list(db.scalars(select(Standing).where(Standing.tournament_id == tournament_id))):
+        db.delete(standing)
+    db.flush()
+    for round_ in list(db.scalars(select(Round).where(Round.tournament_id == tournament_id))):
+        db.delete(round_)
+    for player in list(db.scalars(select(Player).where(Player.tournament_id == tournament_id))):
+        db.delete(player)
+    db.flush()
+
+    players_by_kts_id: dict[str, Player] = {}
+    for parsed_player in parsed_file["players"]:
+        player = Player(tournament_id=tournament_id, name=parsed_player["name"])
+        db.add(player)
+        db.flush()
+        players_by_kts_id[parsed_player["kts_id"]] = player
+
+    rounds_by_number: dict[int, Round] = {}
+    for round_number in parsed_file["round_numbers"]:
+        round_ = Round(tournament_id=tournament_id, number=round_number)
+        db.add(round_)
+        db.flush()
+        rounds_by_number[round_number] = round_
+
+    matches_imported = 0
+    for parsed_match in parsed_file["matches"]:
+        player_one = players_by_kts_id.get(parsed_match["player_one_kts_id"])
+        if player_one is None:
+            continue
+
+        player_two = None
+        if parsed_match["player_two_kts_id"]:
+            player_two = players_by_kts_id.get(parsed_match["player_two_kts_id"])
+            if player_two is None:
+                continue
+
+        round_ = rounds_by_number.get(parsed_match["round_number"])
+        if round_ is None:
+            continue
+
+        db.add(
+            Match(
+                tournament_id=tournament_id,
+                round_id=round_.id,
+                table_number=parsed_match["table_number"],
+                player_one_id=player_one.id,
+                player_two_id=player_two.id if player_two else None,
+                result_status=parsed_match["result_status"],
+                notes=parsed_match["notes"],
+            )
+        )
+        matches_imported += 1
+
+    standings_imported = 0
+    for standing_row in parsed_file["standings"]:
+        if standing_row["cossy_id"] not in players_by_kts_id:
+            continue
+
+        db.add(Standing(tournament_id=tournament_id, **standing_row))
+        standings_imported += 1
+
+    current_round_number = parsed_file["current_round"]
+    if current_round_number is not None and current_round_number in rounds_by_number:
+        tournament.current_round_id = rounds_by_number[current_round_number].id
+
+    db.commit()
+
+    return TournamentFileImportSummary(
+        players_imported=len(players_by_kts_id),
+        rounds_imported=len(rounds_by_number),
+        matches_imported=matches_imported,
+        standings_imported=standings_imported,
+        current_round=current_round_number if tournament.current_round_id is not None else None,
     )
