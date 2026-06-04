@@ -65,7 +65,9 @@ class PlayerCreate(BaseModel):
 class PlayerRead(BaseModel):
     id: int
     tournament_id: int
+    player_profile_id: int | None
     name: str
+    cossy_id: str | None
 
     model_config = {"from_attributes": True}
 
@@ -122,6 +124,7 @@ class PublicMatchRead(BaseModel):
 class StandingRead(BaseModel):
     id: int
     tournament_id: int
+    player_profile_id: int | None
     rank: int
     full_name: str
     short_name: str | None
@@ -130,6 +133,47 @@ class StandingRead(BaseModel):
     tiebreaker: str | None
 
     model_config = {"from_attributes": True}
+
+
+class PlayerProfileRead(BaseModel):
+    id: int
+    display_name: str
+    cossy_id: str | None
+    normalized_name: str
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class PlayerProfileSummaryRead(BaseModel):
+    id: int
+    display_name: str
+    cossy_id: str | None
+    tournaments_played: int
+    total_points: int
+    average_points: float
+    best_rank: int | None
+    last_tournament_date: datetime | None
+
+
+class PlayerTournamentHistoryRead(BaseModel):
+    tournament_id: int
+    tournament_name: str
+    tournament_date: datetime
+    rank: int
+    points: int
+    tiebreaker: str | None
+
+
+class PlayerProfileDetailRead(BaseModel):
+    profile: PlayerProfileRead
+    tournaments_played: int
+    total_points: int
+    average_points: float
+    best_rank: int | None
+    last_tournament_date: datetime | None
+    tournament_history: list[PlayerTournamentHistoryRead]
 
 
 class PublicStandingRead(BaseModel):

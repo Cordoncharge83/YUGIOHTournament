@@ -24,14 +24,34 @@ class Tournament(Base):
     standings: Mapped[list[Standing]] = relationship(back_populates="tournament")
 
 
+class PlayerProfile(Base):
+    __tablename__ = "player_profiles"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    cossy_id: Mapped[str | None] = mapped_column(String(64), unique=True, index=True)
+    display_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    normalized_name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    tournament_players: Mapped[list[Player]] = relationship(back_populates="player_profile")
+    standings: Mapped[list[Standing]] = relationship(back_populates="player_profile")
+
+
 class Player(Base):
     __tablename__ = "players"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     tournament_id: Mapped[int] = mapped_column(ForeignKey("tournaments.id"), nullable=False)
+    player_profile_id: Mapped[int | None] = mapped_column(ForeignKey("player_profiles.id"), index=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
 
     tournament: Mapped[Tournament] = relationship(back_populates="players")
+    player_profile: Mapped[PlayerProfile | None] = relationship(back_populates="tournament_players")
     matches_as_player_one: Mapped[list[Match]] = relationship(
         back_populates="player_one",
         foreign_keys="Match.player_one_id",
@@ -40,6 +60,10 @@ class Player(Base):
         back_populates="player_two",
         foreign_keys="Match.player_two_id",
     )
+
+    @property
+    def cossy_id(self) -> str | None:
+        return self.player_profile.cossy_id if self.player_profile else None
 
 
 class Round(Base):
@@ -84,6 +108,7 @@ class Standing(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     tournament_id: Mapped[int] = mapped_column(ForeignKey("tournaments.id"), nullable=False)
+    player_profile_id: Mapped[int | None] = mapped_column(ForeignKey("player_profiles.id"), index=True)
     rank: Mapped[int] = mapped_column(Integer, nullable=False)
     full_name: Mapped[str] = mapped_column(String(255), nullable=False)
     short_name: Mapped[str | None] = mapped_column(String(255))
@@ -92,3 +117,4 @@ class Standing(Base):
     tiebreaker: Mapped[str | None] = mapped_column(String(64))
 
     tournament: Mapped[Tournament] = relationship(back_populates="standings")
+    player_profile: Mapped[PlayerProfile | None] = relationship(back_populates="standings")

@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import Player, Tournament
+from app.player_profiles import get_or_create_player_profile
 from app.schemas import PlayerCreate, PlayerRead
 
 router = APIRouter(prefix="/tournaments/{tournament_id}/players", tags=["players"])
@@ -25,7 +26,8 @@ def create_player(
 ) -> Player:
     get_tournament_or_404(tournament_id, db)
 
-    player = Player(tournament_id=tournament_id, **player_data.model_dump())
+    profile = get_or_create_player_profile(db, player_data.name)
+    player = Player(tournament_id=tournament_id, player_profile_id=profile.id, **player_data.model_dump())
     db.add(player)
     db.commit()
     db.refresh(player)
