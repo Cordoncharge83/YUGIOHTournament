@@ -182,6 +182,7 @@ class PublicStandingRead(BaseModel):
     rank: int
     full_name: str
     short_name: str | None
+    cossy_id: str | None
     points: int
 
     model_config = {"from_attributes": True}

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import api from "../api/client";
@@ -37,13 +37,66 @@ function getResultDisplay(match) {
   return "Pending";
 }
 
+function getWinnerDisplay(match) {
+  const resultStatus = match.result_status || "UNREPORTED";
+  const playerOneName = formatPlayerDisplayName(match.player_one_name);
+  const playerTwoName = match.notes === "BYE" && !match.player_two_name
+    ? "BYE"
+    : formatPlayerDisplayName(match.player_two_name) || "TBD";
+
+  if (match.notes === "BYE") {
+    return `Winner: ${playerOneName}`;
+  }
+
+  if (resultStatus === "PLAYER_ONE_WIN") {
+    return `Winner: ${playerOneName}`;
+  }
+
+  if (resultStatus === "PLAYER_TWO_WIN") {
+    return `Winner: ${playerTwoName}`;
+  }
+
+  if (resultStatus === "DRAW") {
+    return "Result: Draw";
+  }
+
+  if (resultStatus === "DOUBLE_LOSS") {
+    return "Result: Double loss";
+  }
+
+  return "Result: Pending";
+}
+
+function getMatchStatusBadge(match) {
+  const resultStatus = match.result_status || "UNREPORTED";
+
+  if (match.notes === "BYE") {
+    return { label: "BYE", className: "bg-blue-100 text-blue-800" };
+  }
+
+  if (resultStatus === "PLAYER_ONE_WIN" || resultStatus === "PLAYER_TWO_WIN") {
+    return { label: "Reported", className: "bg-green-100 text-green-800" };
+  }
+
+  if (resultStatus === "DRAW") {
+    return { label: "Draw", className: "bg-purple-100 text-purple-800" };
+  }
+
+  if (resultStatus === "DOUBLE_LOSS") {
+    return { label: "Double loss", className: "bg-red-100 text-red-700" };
+  }
+
+  return { label: "Pending", className: "bg-yellow-100 text-yellow-800" };
+}
+
 export default function PublicTournamentPage() {
   const { id } = useParams();
   const [tournamentData, setTournamentData] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
-  const [selectedRoundId, setSelectedRoundId] = useState(null);
   const [activeTab, setActiveTab] = useState("pairings");
+  const [playerSearch, setPlayerSearch] = useState("");
+  const [standingsSearch, setStandingsSearch] = useState("");
   const [lastUpdated] = useState(() =>
     new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
   );
@@ -51,7 +104,6 @@ export default function PublicTournamentPage() {
   useEffect(() => {
     async function fetchTournament() {
       try {
-        setSelectedRoundId(null);
         setError("");
         const response = await api.get(`/public/tournaments/${id}`);
         setTournamentData(response.data);
@@ -69,30 +121,67 @@ export default function PublicTournamentPage() {
   const rounds = tournamentData?.rounds || [];
   const matches = tournamentData?.matches || [];
   const standings = tournamentData?.standings || [];
-  const sortedRounds = [...rounds].sort((firstRound, secondRound) => firstRound.number - secondRound.number);
-  const selectedRound = rounds.find((round) => round.id === selectedRoundId) || null;
-  const selectedRoundMatches = selectedRound
+  const normalizedPlayerSearch = playerSearch.trim().toLowerCase();
+  const normalizedStandingsSearch = standingsSearch.trim().toLowerCase();
+  const currentRound = rounds.find((round) => round.id === tournament?.current_round_id) || null;
+  const currentRoundMatches = currentRound
     ? matches
-        .filter((match) => match.round_number === selectedRound.number)
+        .filter((match) => match.round_number === currentRound.number)
         .sort((firstMatch, secondMatch) => (firstMatch.table_number || 0) - (secondMatch.table_number || 0))
     : [];
-
-  useEffect(() => {
-    if (!tournamentData || selectedRoundId !== null || rounds.length === 0) {
-      return;
+  const searchedMatches = useMemo(() => {
+    if (!normalizedPlayerSearch) {
+      return [];
     }
 
-    setSelectedRoundId(tournament?.current_round_id || rounds[0].id);
-  }, [rounds, selectedRoundId, tournament?.current_round_id, tournamentData]);
+    return currentRoundMatches
+      .filter((match) => {
+        const playerOneName = formatPlayerDisplayName(match.player_one_name).toLowerCase();
+        const playerTwoName = formatPlayerDisplayName(match.player_two_name).toLowerCase();
+
+        return playerOneName.includes(normalizedPlayerSearch) || playerTwoName.includes(normalizedPlayerSearch);
+      })
+      .sort((firstMatch, secondMatch) => (firstMatch.table_number || 0) - (secondMatch.table_number || 0));
+  }, [currentRoundMatches, normalizedPlayerSearch]);
+  const filteredStandings = useMemo(() => {
+    if (!normalizedStandingsSearch) {
+      return standings;
+    }
+
+    return standings.filter((standing) => {
+      const fullName = (standing.full_name || "").toLowerCase();
+      const shortName = (standing.short_name || "").toLowerCase();
+      const cossyId = (standing.cossy_id || "").toLowerCase();
+
+      return fullName.includes(normalizedStandingsSearch)
+        || shortName.includes(normalizedStandingsSearch)
+        || cossyId.includes(normalizedStandingsSearch);
+    });
+  }, [normalizedStandingsSearch, standings]);
+  const playerCount = tournamentData?.players?.length || 0;
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-5xl flex-col gap-5 px-4 py-5 sm:py-8">
       <header className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
         <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">Tournament</p>
         <h1 className="mt-2 text-3xl font-semibold text-gray-950">{tournament?.name || `Tournament #${id}`}</h1>
-        <div className="mt-3 flex flex-col gap-1 text-sm text-gray-700 sm:flex-row sm:items-center sm:gap-4">
-          <p>{tournament?.location || "Location not set"}</p>
-          <p>Last updated {lastUpdated}</p>
+        <div className="mt-4 flex flex-wrap gap-2 text-sm">
+          <span className="rounded-full border border-gray-300 bg-gray-50 px-3 py-1 font-medium text-gray-700">
+            {tournament?.location || "Location not set"}
+          </span>
+          {currentRound ? (
+            <span className="rounded-full border border-gray-300 bg-blue-100 px-3 py-1 font-semibold text-blue-800">
+              Current Round {currentRound.number}
+            </span>
+          ) : null}
+          {playerCount > 0 ? (
+            <span className="rounded-full border border-gray-300 bg-gray-50 px-3 py-1 font-medium text-gray-700">
+              {playerCount} Players
+            </span>
+          ) : null}
+          <span className="rounded-full border border-gray-300 bg-gray-50 px-3 py-1 font-medium text-gray-700">
+            Last updated {lastUpdated}
+          </span>
         </div>
       </header>
 
@@ -125,68 +214,89 @@ export default function PublicTournamentPage() {
         {error ? <p className="mt-4 text-sm font-medium text-red-700">{error}</p> : null}
         {isLoading ? <p className="mt-4 text-gray-700">Loading tournament...</p> : null}
 
-        {activeTab === "pairings" && !isLoading && sortedRounds.length === 0 ? (
-          <p className="mt-4 text-gray-700">No rounds yet.</p>
+        {activeTab === "pairings" ? (
+          <input
+            className="mt-4 w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-950 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
+            onChange={(event) => setPlayerSearch(event.target.value)}
+            placeholder="Search player name..."
+            type="search"
+            value={playerSearch}
+          />
         ) : null}
 
-        {activeTab === "pairings" && sortedRounds.length > 0 ? (
-          <div className="mt-4">
-            <div className="flex overflow-x-auto overflow-y-hidden">
-              {sortedRounds.map((round) => {
-                const isActive = selectedRoundId === round.id;
-                const isCurrent = tournament?.current_round_id === round.id;
-
-                return (
-                  <button
-                    className={`relative z-10 -mb-px flex shrink-0 items-center gap-2 rounded-t-lg border px-4 py-2 text-sm font-semibold ${
-                      isActive
-                        ? "border-gray-300 border-b-white bg-white text-gray-950"
-                        : "border-gray-200 bg-gray-50 text-gray-500 hover:bg-gray-100 hover:text-gray-700"
-                    }`}
-                    key={round.id}
-                    onClick={() => setSelectedRoundId(round.id)}
-                    type="button"
-                  >
-                    Round {round.number}
-                    {isCurrent ? (
-                      <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[11px] font-semibold text-blue-800">
-                        Current
-                      </span>
-                    ) : null}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
+        {activeTab === "pairings" && !isLoading && !currentRound ? (
+          <p className="mt-4 text-gray-700">No current round is set.</p>
         ) : null}
 
-        {activeTab === "pairings" && selectedRound ? (
-          <section className="rounded-b-lg rounded-tr-lg border border-gray-300 bg-white p-4">
-            <div className="flex flex-wrap items-center gap-2">
-              <h3 className="text-xl font-semibold text-gray-950">Round {selectedRound.number}</h3>
-              {tournament?.current_round_id === selectedRound.id ? (
-                <span className="rounded-full bg-blue-100 px-2.5 py-1 text-xs font-semibold text-blue-800">
-                  Current round
-                </span>
-              ) : null}
-            </div>
-
-            {selectedRoundMatches.length === 0 ? <p className="mt-3 text-sm text-gray-700">No matches for this round.</p> : null}
-
-            {selectedRoundMatches.length > 0 ? (
-              <ul className="mt-4 grid gap-3 sm:grid-cols-2">
-                {selectedRoundMatches.map((match) => {
+        {activeTab === "pairings" && currentRound && normalizedPlayerSearch ? (
+          <section className="mt-4 rounded-lg border border-gray-300 bg-white p-4">
+            {searchedMatches.length === 0 ? (
+              <p className="text-sm text-gray-700">No match found in the current round for '{playerSearch.trim()}'.</p>
+            ) : (
+              <ul className="grid gap-3 sm:grid-cols-2">
+                {searchedMatches.map((match) => {
                   const playerOneName = formatPlayerDisplayName(match.player_one_name);
                   const playerTwoName = match.notes === "BYE" && !match.player_two_name
                     ? "BYE"
                     : formatPlayerDisplayName(match.player_two_name) || "TBD";
-                  const isBye = match.notes === "BYE";
-                  const isReported = isBye || (match.result_status || "UNREPORTED") !== "UNREPORTED";
+                  const statusBadge = getMatchStatusBadge(match);
 
                   return (
                     <li
                       className="rounded-lg border border-gray-200 bg-gray-50 p-4"
-                      key={`${selectedRound.number}-${match.table_number}-${match.player_one_name}`}
+                      key={`${match.round_number}-${match.table_number}-${match.player_one_name}-${match.player_two_name || "bye"}`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Round</p>
+                          <p className="text-2xl font-bold leading-none text-gray-950">{match.round_number}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Table</p>
+                          <p className="text-2xl font-bold leading-none text-gray-950">{match.table_number || "-"}</p>
+                        </div>
+                      </div>
+
+                      <span className="mt-3 inline-flex rounded-full bg-blue-100 px-2.5 py-1 text-xs font-semibold text-blue-800">
+                        Current round
+                      </span>
+                      <span className={`ml-2 mt-3 inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${statusBadge.className}`}>
+                        {statusBadge.label}
+                      </span>
+
+                      <p className="mt-4 text-sm font-medium text-gray-600">
+                        {match.notes === "BYE" ? `${playerOneName} has a BYE` : `${playerOneName} vs ${playerTwoName}`}
+                      </p>
+                      <p className="mt-2 text-base font-semibold text-gray-950">{getWinnerDisplay(match)}</p>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </section>
+        ) : null}
+
+        {activeTab === "pairings" && !normalizedPlayerSearch && currentRound ? (
+          <section className="mt-4 rounded-lg border border-gray-300 bg-white p-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="text-xl font-semibold text-gray-950">Round {currentRound.number} - Current Round</h3>
+            </div>
+
+            {currentRoundMatches.length === 0 ? <p className="mt-3 text-sm text-gray-700">No matches for the current round.</p> : null}
+
+            {currentRoundMatches.length > 0 ? (
+              <ul className="mt-4 grid gap-3 sm:grid-cols-2">
+                {currentRoundMatches.map((match) => {
+                  const playerOneName = formatPlayerDisplayName(match.player_one_name);
+                  const playerTwoName = match.notes === "BYE" && !match.player_two_name
+                    ? "BYE"
+                    : formatPlayerDisplayName(match.player_two_name) || "TBD";
+                  const statusBadge = getMatchStatusBadge(match);
+
+                  return (
+                    <li
+                      className="rounded-lg border border-gray-200 bg-gray-50 p-4"
+                      key={`${currentRound.number}-${match.table_number}-${match.player_one_name}`}
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div>
@@ -194,22 +304,20 @@ export default function PublicTournamentPage() {
                           <p className="text-4xl font-bold leading-none text-gray-950">{match.table_number || "-"}</p>
                         </div>
                         <span
-                          className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
-                            isReported ? "bg-green-100 text-green-800" : "bg-yellow-100 text-yellow-800"
-                          }`}
+                          className={`rounded-full px-2.5 py-1 text-xs font-semibold ${statusBadge.className}`}
                         >
-                          {isReported ? "Reported" : "Pending"}
+                          {statusBadge.label}
                         </span>
                       </div>
 
-                      {isBye ? (
+                      {match.notes === "BYE" ? (
                         <p className="mt-4 text-sm font-medium text-gray-600">{playerOneName} has a BYE</p>
                       ) : (
                         <p className="mt-4 text-sm font-medium text-gray-600">
                           {playerOneName} vs {playerTwoName}
                         </p>
                       )}
-                      <p className={`mt-2 text-base font-semibold ${isReported ? "text-gray-950" : "text-yellow-800"}`}>
+                      <p className="mt-2 text-base font-semibold text-gray-950">
                         {getResultDisplay(match)}
                       </p>
                     </li>
@@ -225,28 +333,42 @@ export default function PublicTournamentPage() {
         ) : null}
 
         {activeTab === "standings" && standings.length > 0 ? (
-          <div className="mt-4 overflow-x-auto">
-            <table className="min-w-full text-left text-sm">
-              <thead className="border-b border-gray-200 text-xs font-semibold uppercase tracking-wide text-gray-500">
-                <tr>
-                  <th className="whitespace-nowrap px-3 py-2">Rank</th>
-                  <th className="min-w-48 px-3 py-2">Player</th>
-                  <th className="whitespace-nowrap px-3 py-2">Points</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200">
-                {standings.map((standing) => (
-                  <tr key={standing.id}>
-                    <td className="whitespace-nowrap px-3 py-3 font-semibold text-gray-950">{standing.rank}</td>
-                    <td className="px-3 py-3 font-medium text-gray-950">
-                      {formatPlayerDisplayName(standing.short_name || standing.full_name)}
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-3 text-gray-700">{standing.points}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <>
+            <input
+              className="mt-4 w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-950 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
+              onChange={(event) => setStandingsSearch(event.target.value)}
+              placeholder="Search player in standings..."
+              type="search"
+              value={standingsSearch}
+            />
+
+            {filteredStandings.length === 0 ? (
+              <p className="mt-4 text-sm text-gray-700">No standing found for '{standingsSearch.trim()}'.</p>
+            ) : (
+              <div className="mt-4 overflow-x-auto">
+                <table className="min-w-full text-left text-sm">
+                  <thead className="border-b border-gray-200 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                    <tr>
+                      <th className="whitespace-nowrap px-3 py-2">Rank</th>
+                      <th className="min-w-48 px-3 py-2">Player</th>
+                      <th className="whitespace-nowrap px-3 py-2">Points</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {filteredStandings.map((standing) => (
+                      <tr key={standing.id}>
+                        <td className="whitespace-nowrap px-3 py-3 font-semibold text-gray-950">{standing.rank}</td>
+                        <td className="px-3 py-3 font-medium text-gray-950">
+                          {formatPlayerDisplayName(standing.short_name || standing.full_name)}
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-3 text-gray-700">{standing.points}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
         ) : null}
       </section>
     </main>

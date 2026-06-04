@@ -78,6 +78,10 @@ main {
   background-color: rgba(127, 29, 29, 0.35) !important;
 }
 
+.bg-purple-100 {
+  background-color: rgba(91, 64, 137, 0.35) !important;
+}
+
 .border-gray-200,
 .border-gray-300,
 .border-blue-200 {
@@ -139,6 +143,10 @@ main {
 
 .text-red-700 {
   color: #ff9b9b !important;
+}
+
+.text-purple-800 {
+  color: #d7c2ff !important;
 }
 
 .text-white {
