@@ -20,10 +20,6 @@ export default function AdminTournamentPage() {
   const { id } = useParams();
   const [tournament, setTournament] = useState(null);
   const [players, setPlayers] = useState([]);
-  const [playerName, setPlayerName] = useState("");
-  const [isLoadingPlayers, setIsLoadingPlayers] = useState(true);
-  const [isCreatingPlayer, setIsCreatingPlayer] = useState(false);
-  const [playersError, setPlayersError] = useState("");
   const [rounds, setRounds] = useState([]);
   const [isLoadingRounds, setIsLoadingRounds] = useState(true);
   const [isCreatingRound, setIsCreatingRound] = useState(false);
@@ -40,6 +36,7 @@ export default function AdminTournamentPage() {
   const [savingMatchId, setSavingMatchId] = useState(null);
   const [matchesError, setMatchesError] = useState("");
   const [standings, setStandings] = useState([]);
+  const [standingsSearch, setStandingsSearch] = useState("");
   const [copyMessage, setCopyMessage] = useState("");
   const [importRoundNumber, setImportRoundNumber] = useState("1");
   const [importFile, setImportFile] = useState(null);
@@ -59,10 +56,11 @@ export default function AdminTournamentPage() {
   const [isImportingTournamentFile, setIsImportingTournamentFile] = useState(false);
   const [tournamentFileImportMessage, setTournamentFileImportMessage] = useState("");
   const [tournamentFileImportError, setTournamentFileImportError] = useState("");
-  const [isManualToolsOpen, setIsManualToolsOpen] = useState(false);
-  const [isPlayersToolOpen, setIsPlayersToolOpen] = useState(false);
+  const [activeTournamentTab, setActiveTournamentTab] = useState("matches");
+  const [isManualToolsOpen, setIsManualToolsOpen] = useState(true);
+  const [isAdvancedImportToolsOpen, setIsAdvancedImportToolsOpen] = useState(false);
   const [isRoundsToolOpen, setIsRoundsToolOpen] = useState(false);
-  const [isStandingsToolOpen, setIsStandingsToolOpen] = useState(false);
+  const [isPreviousRoundsOpen, setIsPreviousRoundsOpen] = useState(false);
   const [selectedMatchRoundId, setSelectedMatchRoundId] = useState(null);
   const [showOnlyUnreportedMatches, setShowOnlyUnreportedMatches] = useState(false);
 
@@ -91,13 +89,10 @@ export default function AdminTournamentPage() {
 
   async function fetchPlayers() {
     try {
-      setPlayersError("");
       const response = await api.get(`/tournaments/${id}/players`);
       setPlayers(response.data);
     } catch {
-      setPlayersError("Could not load players.");
-    } finally {
-      setIsLoadingPlayers(false);
+      setPlayers([]);
     }
   }
 
@@ -141,27 +136,6 @@ export default function AdminTournamentPage() {
     fetchMatches();
     fetchStandings();
   }, [id]);
-
-  async function handleCreatePlayer(event) {
-    event.preventDefault();
-
-    if (!playerName.trim()) {
-      setPlayersError("Player name is required.");
-      return;
-    }
-
-    try {
-      setIsCreatingPlayer(true);
-      setPlayersError("");
-      await api.post(`/tournaments/${id}/players`, { name: playerName.trim() });
-      setPlayerName("");
-      await fetchPlayers();
-    } catch {
-      setPlayersError("Could not add player.");
-    } finally {
-      setIsCreatingPlayer(false);
-    }
-  }
 
   async function handleCreateNextRound() {
     const nextRoundNumber =
@@ -437,11 +411,13 @@ export default function AdminTournamentPage() {
 
   const publicPath = `/t/${id}`;
   const publicUrl = `${window.location.origin}${publicPath}`;
-  const playerNames = Object.fromEntries(players.map((player) => [player.id, player.name]));
   const playerDisplayNames = Object.fromEntries(players.map((player) => [player.id, formatPlayerDisplayName(player.name)]));
   const roundNumbers = Object.fromEntries(rounds.map((round) => [round.id, round.number]));
   const sortedRounds = [...rounds].sort((firstRound, secondRound) => firstRound.number - secondRound.number);
   const currentRound = rounds.find((round) => round.id === tournament?.current_round_id) || null;
+  const visibleMatchRoundTabs = isPreviousRoundsOpen
+    ? sortedRounds
+    : sortedRounds.filter((round) => round.id === (currentRound?.id || selectedMatchRoundId));
   const currentRoundUnreportedMatches = currentRound
     ? matches
         .filter((match) => match.round_id === currentRound.id && (match.result_status || "UNREPORTED") === "UNREPORTED")
@@ -464,6 +440,18 @@ export default function AdminTournamentPage() {
   const displayedSelectedRoundMatches = showOnlyUnreportedMatches
     ? selectedRoundMatches.filter((match) => (match.result_status || "UNREPORTED") === "UNREPORTED")
     : selectedRoundMatches;
+  const normalizedStandingsSearch = standingsSearch.trim().toLowerCase();
+  const filteredStandings = normalizedStandingsSearch
+    ? standings.filter((standing) => {
+        const fullName = (standing.full_name || "").toLowerCase();
+        const shortName = (standing.short_name || "").toLowerCase();
+        const cossyId = (standing.cossy_id || "").toLowerCase();
+
+        return fullName.includes(normalizedStandingsSearch)
+          || shortName.includes(normalizedStandingsSearch)
+          || cossyId.includes(normalizedStandingsSearch);
+      })
+    : standings;
 
   useEffect(() => {
     if (rounds.length === 0) {
@@ -599,11 +587,8 @@ export default function AdminTournamentPage() {
       </section>
 
       <section className="rounded-lg border border-blue-200 bg-white p-5 shadow-sm">
-        <div className="flex flex-wrap items-center gap-2">
+        <div>
           <h2 className="text-xl font-semibold text-gray-950">Import KTS Tournament File</h2>
-          <span className="rounded bg-yellow-100 px-2 py-1 text-xs font-semibold uppercase tracking-wide text-yellow-900">
-            Experimental
-          </span>
         </div>
         <p className="mt-2 text-sm text-gray-700">
           Updates this tournament from the uploaded KTS file, replacing existing players, rounds, matches, and standings.
@@ -638,115 +623,91 @@ export default function AdminTournamentPage() {
         {tournamentFileImportError ? <p className="mt-3 text-sm font-medium text-red-700">{tournamentFileImportError}</p> : null}
       </section>
 
-      <section className="rounded-lg border border-blue-200 bg-white p-5 shadow-sm">
-        <div>
-          <h2 className="text-xl font-semibold text-gray-950">Import Round from KTS</h2>
+      <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+        <div className="flex overflow-x-auto overflow-y-hidden border-b border-gray-200">
+          <button
+            className={`shrink-0 border-b-2 px-4 py-2 text-sm font-semibold ${
+              activeTournamentTab === "matches"
+                ? "border-blue-700 text-blue-700"
+                : "border-transparent text-gray-500 hover:text-gray-800"
+            }`}
+            onClick={() => setActiveTournamentTab("matches")}
+            type="button"
+          >
+            Current Round / Matches
+          </button>
+          <button
+            className={`shrink-0 border-b-2 px-4 py-2 text-sm font-semibold ${
+              activeTournamentTab === "standings"
+                ? "border-blue-700 text-blue-700"
+                : "border-transparent text-gray-500 hover:text-gray-800"
+            }`}
+            onClick={() => setActiveTournamentTab("standings")}
+            type="button"
+          >
+            Standings
+          </button>
+        </div>
+      </section>
+
+      {activeTournamentTab === "standings" ? (
+      <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-xl font-semibold text-gray-950">Standings</h2>
+            <p className="mt-1 text-sm text-gray-700">{standings.length} players imported</p>
+          </div>
+          <button className="text-sm font-medium text-blue-700 hover:text-blue-900" onClick={fetchStandings} type="button">
+            Refresh
+          </button>
         </div>
 
-        <form className="mt-4 grid gap-3 md:grid-cols-[180px_1fr_auto]" onSubmit={handlePreviewRoundCsv}>
-          <label className="flex flex-col gap-1 text-sm font-medium text-gray-700">
-            Round number
-            <input
-              className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-950 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
-              min="1"
-              onChange={(event) => updateImportRoundNumber(event.target.value)}
-              type="number"
-              value={importRoundNumber}
-            />
-          </label>
+        <input
+          className="mt-4 w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-950 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
+          onChange={(event) => setStandingsSearch(event.target.value)}
+          placeholder="Search standings..."
+          type="search"
+          value={standingsSearch}
+        />
 
-          <label className="flex flex-col gap-1 text-sm font-medium text-gray-700">
-            CSV file
-            <input
-              accept=".csv,text/csv"
-              className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-950 file:mr-3 file:rounded file:border-0 file:bg-gray-100 file:px-3 file:py-1 file:text-sm file:font-medium file:text-gray-700 hover:file:bg-gray-200"
-              onChange={(event) => updateImportFile(event.target.files?.[0] || null)}
-              ref={importFileInputRef}
-              type="file"
-            />
-          </label>
-
-          <button
-            className="self-end rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 disabled:cursor-not-allowed disabled:bg-gray-400"
-            disabled={isPreviewingImport || isImportingRound}
-            type="submit"
-          >
-            {isPreviewingImport ? "Previewing..." : "Preview import"}
-          </button>
-        </form>
-
-        {importPreview ? (
-          <div className="mt-4 rounded-lg border border-gray-200 bg-gray-50 p-4">
-            <div className="grid gap-3 text-sm text-gray-700 sm:grid-cols-4">
-              <div>
-                <p className="font-semibold text-gray-950">Round</p>
-                <p>{importPreview.round_number}</p>
-              </div>
-              <div>
-                <p className="font-semibold text-gray-950">Matches</p>
-                <p>{importPreview.matches_count}</p>
-              </div>
-              <div>
-                <p className="font-semibold text-gray-950">Players</p>
-                <p>{importPreview.players_detected_count}</p>
-              </div>
-              <div>
-                <p className="font-semibold text-gray-950">BYEs</p>
-                <p>{importPreview.bye_count}</p>
-              </div>
-            </div>
-            {importPreview.warning ? (
-              <p className="mt-3 rounded-md border border-yellow-200 bg-yellow-50 px-3 py-2 text-sm font-semibold text-yellow-900">
-                {importPreview.warning}
-              </p>
-            ) : null}
-            <button
-              className="mt-4 rounded-md bg-blue-700 px-4 py-2 text-sm font-medium text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:bg-gray-400"
-              disabled={isImportingRound}
-              onClick={handleConfirmRoundCsvImport}
-              type="button"
-            >
-              {isImportingRound ? "Importing..." : "Confirm import"}
-            </button>
-          </div>
+        {standings.length === 0 ? <p className="mt-4 text-sm text-gray-700">No standings imported yet.</p> : null}
+        {standings.length > 0 && filteredStandings.length === 0 ? (
+          <p className="mt-4 text-sm text-gray-700">No standings match "{standingsSearch.trim()}".</p>
         ) : null}
 
-        {importMessage ? <p className="mt-3 text-sm font-medium text-green-700">{importMessage}</p> : null}
-        {importError ? <p className="mt-3 text-sm font-medium text-red-700">{importError}</p> : null}
+        {filteredStandings.length > 0 ? (
+          <div className="mt-4 overflow-x-auto">
+            <table className="min-w-full text-left text-sm">
+              <thead className="border-b border-gray-200 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                <tr>
+                  <th className="whitespace-nowrap px-3 py-2">Rank</th>
+                  <th className="min-w-48 px-3 py-2">Player</th>
+                  <th className="whitespace-nowrap px-3 py-2">COSSY ID</th>
+                  <th className="whitespace-nowrap px-3 py-2">Points</th>
+                  <th className="whitespace-nowrap px-3 py-2">Tiebreaker</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {filteredStandings.map((standing) => (
+                  <tr key={standing.id}>
+                    <td className="whitespace-nowrap px-3 py-3 font-semibold text-gray-950">{standing.rank}</td>
+                    <td className="px-3 py-3 font-medium text-gray-950">
+                      {formatPlayerDisplayName(standing.short_name || standing.full_name)}
+                    </td>
+                    <td className="whitespace-nowrap px-3 py-3 text-gray-700">{standing.cossy_id || "-"}</td>
+                    <td className="whitespace-nowrap px-3 py-3 text-gray-700">{standing.points}</td>
+                    <td className="whitespace-nowrap px-3 py-3 text-gray-700">{standing.tiebreaker || "-"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
       </section>
+      ) : null}
 
-      <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
-        <h2 className="text-xl font-semibold text-gray-950">Import KTS Standings CSV</h2>
-
-        <form className="mt-4 grid gap-3 md:grid-cols-[1fr_auto]" onSubmit={handleImportStandingsCsv}>
-          <label className="flex flex-col gap-1 text-sm font-medium text-gray-700">
-            CSV file
-            <input
-              accept=".csv,text/csv"
-              className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-950 file:mr-3 file:rounded file:border-0 file:bg-gray-100 file:px-3 file:py-1 file:text-sm file:font-medium file:text-gray-700 hover:file:bg-gray-200"
-              onChange={(event) => {
-                setStandingsFile(event.target.files?.[0] || null);
-                setStandingsImportMessage("");
-                setStandingsImportError("");
-              }}
-              ref={standingsFileInputRef}
-              type="file"
-            />
-          </label>
-
-          <button
-            className="self-end rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 disabled:cursor-not-allowed disabled:bg-gray-400"
-            disabled={isImportingStandings}
-            type="submit"
-          >
-            {isImportingStandings ? "Importing..." : "Import standings"}
-          </button>
-        </form>
-
-        {standingsImportMessage ? <p className="mt-3 text-sm font-medium text-green-700">{standingsImportMessage}</p> : null}
-        {standingsImportError ? <p className="mt-3 text-sm font-medium text-red-700">{standingsImportError}</p> : null}
-      </section>
-
+      {activeTournamentTab === "matches" ? (
+      <>
       <section className="rounded-lg border border-gray-200 bg-gray-50 p-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -763,63 +724,6 @@ export default function AdminTournamentPage() {
 
         {isManualToolsOpen ? (
           <div className="mt-4 grid items-start gap-4 md:grid-cols-3">
-        <div className="order-2 self-start rounded-lg border border-gray-200 bg-white p-4">
-          <div className="flex items-center justify-between gap-4">
-            <button
-              className="text-left text-base font-semibold text-gray-950"
-              onClick={() => setIsPlayersToolOpen((isOpen) => !isOpen)}
-              type="button"
-            >
-              Players — {players.length} total
-            </button>
-            <button
-              className="rounded border border-gray-300 px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
-              onClick={() => setIsPlayersToolOpen((isOpen) => !isOpen)}
-              type="button"
-            >
-              {isPlayersToolOpen ? "Hide" : "Show"}
-            </button>
-          </div>
-
-          {isPlayersToolOpen ? (
-            <>
-          <button className="mt-4 text-sm font-medium text-blue-700 hover:text-blue-900" onClick={fetchPlayers} type="button">
-            Refresh
-          </button>
-
-          <form className="mt-4 flex gap-2" onSubmit={handleCreatePlayer}>
-            <input
-              className="min-w-0 flex-1 rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-950 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
-              onChange={(event) => setPlayerName(event.target.value)}
-              placeholder="Player name"
-              type="text"
-              value={playerName}
-            />
-            <button
-              className="rounded-md bg-blue-700 px-3 py-2 text-sm font-medium text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:bg-gray-400"
-              disabled={isCreatingPlayer}
-              type="submit"
-            >
-              Add
-            </button>
-          </form>
-
-          {playersError ? <p className="mt-3 text-sm font-medium text-red-700">{playersError}</p> : null}
-          {isLoadingPlayers ? <p className="mt-4 text-sm text-gray-700">Loading players...</p> : null}
-          {!isLoadingPlayers && players.length === 0 ? <p className="mt-4 text-sm text-gray-700">No players yet.</p> : null}
-
-          {players.length > 0 ? (
-            <ul className="mt-4 divide-y divide-gray-200">
-              {players.map((player) => (
-                <li className="py-3 text-sm font-medium text-gray-950" key={player.id}>
-                  {player.name}
-                </li>
-              ))}
-            </ul>
-          ) : null}
-            </>
-          ) : null}
-        </div>
         <div className="order-3 self-start rounded-lg border border-gray-200 bg-white p-4">
           <div className="flex items-center justify-between gap-4">
             <button
@@ -888,55 +792,6 @@ export default function AdminTournamentPage() {
             </>
           ) : null}
         </div>
-        <div className="order-4 self-start rounded-lg border border-gray-200 bg-white p-4 md:col-span-3">
-          <div className="flex items-center justify-between gap-4">
-            <button
-              className="text-left text-base font-semibold text-gray-950"
-              onClick={() => setIsStandingsToolOpen((isOpen) => !isOpen)}
-              type="button"
-            >
-              Standings — {standings.length} players
-            </button>
-            <button
-              className="rounded border border-gray-300 px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
-              onClick={() => setIsStandingsToolOpen((isOpen) => !isOpen)}
-              type="button"
-            >
-              {isStandingsToolOpen ? "Hide" : "Show"}
-            </button>
-          </div>
-
-          {isStandingsToolOpen ? (
-            standings.length > 0 ? (
-              <div className="mt-4 overflow-x-auto">
-                <table className="min-w-full text-left text-sm">
-                  <thead className="border-b border-gray-200 text-xs font-semibold uppercase tracking-wide text-gray-500">
-                    <tr>
-                      <th className="whitespace-nowrap px-3 py-2">Rank</th>
-                      <th className="min-w-48 px-3 py-2">Player</th>
-                      <th className="whitespace-nowrap px-3 py-2">Points</th>
-                      <th className="whitespace-nowrap px-3 py-2">Tiebreaker</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-200">
-                    {standings.map((standing) => (
-                      <tr key={standing.id}>
-                        <td className="whitespace-nowrap px-3 py-3 font-semibold text-gray-950">{standing.rank}</td>
-                        <td className="px-3 py-3 font-medium text-gray-950">
-                          {formatPlayerDisplayName(standing.short_name || standing.full_name)}
-                        </td>
-                        <td className="whitespace-nowrap px-3 py-3 text-gray-700">{standing.points}</td>
-                        <td className="whitespace-nowrap px-3 py-3 text-gray-700">{standing.tiebreaker || "-"}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <p className="mt-4 text-sm text-gray-700">No standings imported yet.</p>
-            )
-          ) : null}
-        </div>
         <div className="order-1 self-start rounded-lg border border-gray-200 bg-white p-5 shadow-sm md:col-span-3">
           <div className="flex items-center justify-between gap-4">
             <h2 className="text-lg font-semibold text-gray-950">Matches</h2>
@@ -949,9 +804,19 @@ export default function AdminTournamentPage() {
 
           {sortedRounds.length > 0 ? (
             <div className="mt-4">
+              <div className="mb-2 flex justify-end">
+                <button
+                  className="text-xs font-semibold text-blue-700 hover:text-blue-900"
+                  onClick={() => setIsPreviousRoundsOpen((isOpen) => !isOpen)}
+                  type="button"
+                >
+                  {isPreviousRoundsOpen ? "Hide previous rounds" : "Show previous rounds"}
+                </button>
+              </div>
               <div className="flex overflow-x-auto overflow-y-hidden">
-                {sortedRounds.map((round) => {
+                {visibleMatchRoundTabs.map((round) => {
                   const isActive = selectedMatchRoundId === round.id;
+                  const isCurrent = tournament?.current_round_id === round.id;
 
                   return (
                     <button
@@ -965,6 +830,9 @@ export default function AdminTournamentPage() {
                       type="button"
                     >
                       Round {round.number}
+                      {isCurrent ? (
+                        <span className="ml-2 rounded bg-blue-100 px-2 py-0.5 text-[11px] font-semibold text-blue-800">Current</span>
+                      ) : null}
                     </button>
                   );
                 })}
@@ -972,7 +840,7 @@ export default function AdminTournamentPage() {
 
               {selectedMatchRound ? (
                 <p className="rounded-b-md border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-700">
-                  Round {selectedMatchRound.number} — {selectedRoundMatches.length} matches — {selectedRoundUnreportedCount} unreported
+                  Round {selectedMatchRound.number}{tournament?.current_round_id === selectedMatchRound.id ? " - Current Round" : ""} - {selectedRoundMatches.length} matches - {selectedRoundUnreportedCount} unreported
                 </p>
               ) : null}
             </div>
@@ -987,69 +855,6 @@ export default function AdminTournamentPage() {
             />
             Show only unreported matches
           </label>
-
-          <form className="mt-4 grid gap-3 md:grid-cols-5" onSubmit={handleCreateMatch}>
-            <select
-              className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-950 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
-              onChange={(event) => {
-                updateMatchForm("round_id", event.target.value);
-                setSelectedMatchRoundId(Number(event.target.value));
-              }}
-              value={matchForm.round_id}
-            >
-              <option disabled value="">
-                Select round
-              </option>
-              {rounds.map((round) => (
-                <option key={round.id} value={round.id}>
-                  Round {round.number}
-                </option>
-              ))}
-            </select>
-
-            <input
-              className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-950 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
-              min="1"
-              onChange={(event) => updateMatchForm("table_number", event.target.value)}
-              placeholder="Table"
-              type="number"
-              value={matchForm.table_number}
-            />
-
-            <select
-              className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-950 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
-              onChange={(event) => updateMatchForm("player_one_id", event.target.value)}
-              value={matchForm.player_one_id}
-            >
-              <option value="">Player one</option>
-              {players.map((player) => (
-                <option key={player.id} value={player.id}>
-                  {player.name}
-                </option>
-              ))}
-            </select>
-
-            <select
-              className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-950 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
-              onChange={(event) => updateMatchForm("player_two_id", event.target.value)}
-              value={matchForm.player_two_id}
-            >
-              <option value="">Player two</option>
-              {players.map((player) => (
-                <option key={player.id} value={player.id}>
-                  {player.name}
-                </option>
-              ))}
-            </select>
-
-            <button
-              className="rounded-md bg-blue-700 px-3 py-2 text-sm font-medium text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:bg-gray-400"
-              disabled={isCreatingMatch || rounds.length === 0 || players.length < 2}
-              type="submit"
-            >
-              {isCreatingMatch ? "Creating..." : "Add match"}
-            </button>
-          </form>
 
           {matchesError ? <p className="mt-3 text-sm font-medium text-red-700">{matchesError}</p> : null}
           {isLoadingMatches ? <p className="mt-4 text-sm text-gray-700">Loading matches...</p> : null}
@@ -1122,10 +927,210 @@ export default function AdminTournamentPage() {
               })}
             </ul>
           ) : null}
+
+          <div className="mt-6 rounded-lg border border-gray-200 bg-gray-50 p-4">
+            <h3 className="text-base font-semibold text-gray-950">Add match manually</h3>
+            <p className="mt-1 text-sm text-gray-700">Use only if you need to manually create a missing match.</p>
+
+            <form className="mt-4 grid gap-3 md:grid-cols-5" onSubmit={handleCreateMatch}>
+              <select
+                className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-950 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
+                onChange={(event) => {
+                  updateMatchForm("round_id", event.target.value);
+                  setSelectedMatchRoundId(Number(event.target.value));
+                }}
+                value={matchForm.round_id}
+              >
+                <option disabled value="">
+                  Select round
+                </option>
+                {rounds.map((round) => (
+                  <option key={round.id} value={round.id}>
+                    Round {round.number}
+                  </option>
+                ))}
+              </select>
+
+              <input
+                className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-950 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
+                min="1"
+                onChange={(event) => updateMatchForm("table_number", event.target.value)}
+                placeholder="Table"
+                type="number"
+                value={matchForm.table_number}
+              />
+
+              <select
+                className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-950 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
+                onChange={(event) => updateMatchForm("player_one_id", event.target.value)}
+                value={matchForm.player_one_id}
+              >
+                <option value="">Player one</option>
+                {players.map((player) => (
+                  <option key={player.id} value={player.id}>
+                    {player.name}
+                  </option>
+                ))}
+              </select>
+
+              <select
+                className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-950 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
+                onChange={(event) => updateMatchForm("player_two_id", event.target.value)}
+                value={matchForm.player_two_id}
+              >
+                <option value="">Player two</option>
+                {players.map((player) => (
+                  <option key={player.id} value={player.id}>
+                    {player.name}
+                  </option>
+                ))}
+              </select>
+
+              <button
+                className="rounded-md bg-blue-700 px-3 py-2 text-sm font-medium text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:bg-gray-400"
+                disabled={isCreatingMatch || rounds.length === 0 || players.length < 2}
+                type="submit"
+              >
+                {isCreatingMatch ? "Creating..." : "Add match"}
+              </button>
+            </form>
+          </div>
         </div>
           </div>
         ) : null}
       </section>
+      </>
+      ) : null}
+        <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 md:col-span-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-base font-semibold text-gray-950">Advanced Import Tools</h2>
+              <p className="mt-1 text-sm text-gray-700">
+                Use these only if the full KTS tournament file import is unavailable or you need a partial manual import.
+              </p>
+            </div>
+            <button
+              className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
+              onClick={() => setIsAdvancedImportToolsOpen((isOpen) => !isOpen)}
+              type="button"
+            >
+              {isAdvancedImportToolsOpen ? "Hide tools" : "Show tools"}
+            </button>
+          </div>
+
+          {isAdvancedImportToolsOpen ? (
+            <div className="mt-4 grid gap-4">
+              <section className="rounded-lg border border-blue-200 bg-white p-5 shadow-sm">
+                <div>
+                  <h2 className="text-xl font-semibold text-gray-950">Import Round from KTS</h2>
+                </div>
+
+                <form className="mt-4 grid gap-3 md:grid-cols-[180px_1fr_auto]" onSubmit={handlePreviewRoundCsv}>
+                  <label className="flex flex-col gap-1 text-sm font-medium text-gray-700">
+                    Round number
+                    <input
+                      className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-950 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
+                      min="1"
+                      onChange={(event) => updateImportRoundNumber(event.target.value)}
+                      type="number"
+                      value={importRoundNumber}
+                    />
+                  </label>
+
+                  <label className="flex flex-col gap-1 text-sm font-medium text-gray-700">
+                    CSV file
+                    <input
+                      accept=".csv,text/csv"
+                      className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-950 file:mr-3 file:rounded file:border-0 file:bg-gray-100 file:px-3 file:py-1 file:text-sm file:font-medium file:text-gray-700 hover:file:bg-gray-200"
+                      onChange={(event) => updateImportFile(event.target.files?.[0] || null)}
+                      ref={importFileInputRef}
+                      type="file"
+                    />
+                  </label>
+
+                  <button
+                    className="self-end rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 disabled:cursor-not-allowed disabled:bg-gray-400"
+                    disabled={isPreviewingImport || isImportingRound}
+                    type="submit"
+                  >
+                    {isPreviewingImport ? "Previewing..." : "Preview import"}
+                  </button>
+                </form>
+
+                {importPreview ? (
+                  <div className="mt-4 rounded-lg border border-gray-200 bg-gray-50 p-4">
+                    <div className="grid gap-3 text-sm text-gray-700 sm:grid-cols-4">
+                      <div>
+                        <p className="font-semibold text-gray-950">Round</p>
+                        <p>{importPreview.round_number}</p>
+                      </div>
+                      <div>
+                        <p className="font-semibold text-gray-950">Matches</p>
+                        <p>{importPreview.matches_count}</p>
+                      </div>
+                      <div>
+                        <p className="font-semibold text-gray-950">Players</p>
+                        <p>{importPreview.players_detected_count}</p>
+                      </div>
+                      <div>
+                        <p className="font-semibold text-gray-950">BYEs</p>
+                        <p>{importPreview.bye_count}</p>
+                      </div>
+                    </div>
+                    {importPreview.warning ? (
+                      <p className="mt-3 rounded-md border border-yellow-200 bg-yellow-50 px-3 py-2 text-sm font-semibold text-yellow-900">
+                        {importPreview.warning}
+                      </p>
+                    ) : null}
+                    <button
+                      className="mt-4 rounded-md bg-blue-700 px-4 py-2 text-sm font-medium text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:bg-gray-400"
+                      disabled={isImportingRound}
+                      onClick={handleConfirmRoundCsvImport}
+                      type="button"
+                    >
+                      {isImportingRound ? "Importing..." : "Confirm import"}
+                    </button>
+                  </div>
+                ) : null}
+
+                {importMessage ? <p className="mt-3 text-sm font-medium text-green-700">{importMessage}</p> : null}
+                {importError ? <p className="mt-3 text-sm font-medium text-red-700">{importError}</p> : null}
+              </section>
+
+              <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
+                <h2 className="text-xl font-semibold text-gray-950">Import KTS Standings CSV</h2>
+
+                <form className="mt-4 grid gap-3 md:grid-cols-[1fr_auto]" onSubmit={handleImportStandingsCsv}>
+                  <label className="flex flex-col gap-1 text-sm font-medium text-gray-700">
+                    CSV file
+                    <input
+                      accept=".csv,text/csv"
+                      className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-950 file:mr-3 file:rounded file:border-0 file:bg-gray-100 file:px-3 file:py-1 file:text-sm file:font-medium file:text-gray-700 hover:file:bg-gray-200"
+                      onChange={(event) => {
+                        setStandingsFile(event.target.files?.[0] || null);
+                        setStandingsImportMessage("");
+                        setStandingsImportError("");
+                      }}
+                      ref={standingsFileInputRef}
+                      type="file"
+                    />
+                  </label>
+
+                  <button
+                    className="self-end rounded-md bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 disabled:cursor-not-allowed disabled:bg-gray-400"
+                    disabled={isImportingStandings}
+                    type="submit"
+                  >
+                    {isImportingStandings ? "Importing..." : "Import standings"}
+                  </button>
+                </form>
+
+                {standingsImportMessage ? <p className="mt-3 text-sm font-medium text-green-700">{standingsImportMessage}</p> : null}
+                {standingsImportError ? <p className="mt-3 text-sm font-medium text-red-700">{standingsImportError}</p> : null}
+              </section>
+            </div>
+          ) : null}
+        </div>
     </main>
   );
 }
