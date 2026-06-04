@@ -64,6 +64,7 @@ export default function AdminTournamentPage() {
   const [isRoundsToolOpen, setIsRoundsToolOpen] = useState(false);
   const [isStandingsToolOpen, setIsStandingsToolOpen] = useState(false);
   const [selectedMatchRoundId, setSelectedMatchRoundId] = useState(null);
+  const [showOnlyUnreportedMatches, setShowOnlyUnreportedMatches] = useState(false);
 
   function getApiErrorMessage(error, fallbackMessage) {
     const detail = error.response?.data?.detail;
@@ -441,9 +442,16 @@ export default function AdminTournamentPage() {
   const roundNumbers = Object.fromEntries(rounds.map((round) => [round.id, round.number]));
   const sortedRounds = [...rounds].sort((firstRound, secondRound) => firstRound.number - secondRound.number);
   const currentRound = rounds.find((round) => round.id === tournament?.current_round_id) || null;
-  const currentRoundUnreportedCount = currentRound
-    ? matches.filter((match) => match.round_id === currentRound.id && (match.result_status || "UNREPORTED") === "UNREPORTED").length
-    : null;
+  const currentRoundUnreportedMatches = currentRound
+    ? matches
+        .filter((match) => match.round_id === currentRound.id && (match.result_status || "UNREPORTED") === "UNREPORTED")
+        .sort((firstMatch, secondMatch) => (firstMatch.table_number || 0) - (secondMatch.table_number || 0))
+    : [];
+  const currentRoundUnreportedCount = currentRound ? currentRoundUnreportedMatches.length : null;
+  const currentRoundUnreportedTableNumbers = currentRoundUnreportedMatches
+    .map((match) => match.table_number)
+    .filter((tableNumber) => tableNumber !== null && tableNumber !== undefined)
+    .sort((firstTable, secondTable) => firstTable - secondTable);
   const selectedMatchRound = rounds.find((round) => round.id === selectedMatchRoundId) || null;
   const selectedRoundMatches = selectedMatchRound
     ? matches
@@ -453,6 +461,9 @@ export default function AdminTournamentPage() {
   const selectedRoundUnreportedCount = selectedRoundMatches.filter(
     (match) => (match.result_status || "UNREPORTED") === "UNREPORTED",
   ).length;
+  const displayedSelectedRoundMatches = showOnlyUnreportedMatches
+    ? selectedRoundMatches.filter((match) => (match.result_status || "UNREPORTED") === "UNREPORTED")
+    : selectedRoundMatches;
 
   useEffect(() => {
     if (rounds.length === 0) {
@@ -545,8 +556,16 @@ export default function AdminTournamentPage() {
               <div>
                 <p className="font-semibold text-gray-950">Current round</p>
                 <p>{currentRound ? `Round ${currentRound.number}` : "Not set"}</p>
-                {currentRoundUnreportedCount !== null ? (
-                  <p className="mt-1 text-xs font-medium text-yellow-700">{currentRoundUnreportedCount} unreported matches</p>
+                {currentRoundUnreportedCount !== null && currentRoundUnreportedCount > 0 ? (
+                  <div className="mt-1 text-xs font-medium text-yellow-700">
+                    <p>{currentRoundUnreportedCount} unreported matches</p>
+                    {currentRoundUnreportedTableNumbers.length > 0 ? (
+                      <p className="mt-1">Tables: {currentRoundUnreportedTableNumbers.join(", ")}</p>
+                    ) : null}
+                  </div>
+                ) : null}
+                {currentRoundUnreportedCount === 0 ? (
+                  <p className="mt-1 text-xs font-medium text-green-700">All current round matches reported</p>
                 ) : null}
               </div>
               <div>
@@ -959,6 +978,16 @@ export default function AdminTournamentPage() {
             </div>
           ) : null}
 
+          <label className="mt-4 flex w-fit items-center gap-2 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700">
+            <input
+              checked={showOnlyUnreportedMatches}
+              className="h-4 w-4"
+              onChange={(event) => setShowOnlyUnreportedMatches(event.target.checked)}
+              type="checkbox"
+            />
+            Show only unreported matches
+          </label>
+
           <form className="mt-4 grid gap-3 md:grid-cols-5" onSubmit={handleCreateMatch}>
             <select
               className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-950 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
@@ -1028,10 +1057,13 @@ export default function AdminTournamentPage() {
           {!isLoadingMatches && matches.length > 0 && selectedMatchRound && selectedRoundMatches.length === 0 ? (
             <p className="mt-4 text-sm text-gray-700">No matches for this round.</p>
           ) : null}
+          {!isLoadingMatches && selectedMatchRound && selectedRoundMatches.length > 0 && showOnlyUnreportedMatches && displayedSelectedRoundMatches.length === 0 ? (
+            <p className="mt-4 text-sm text-gray-700">All matches reported for this round.</p>
+          ) : null}
 
-          {selectedRoundMatches.length > 0 ? (
+          {displayedSelectedRoundMatches.length > 0 ? (
             <ul className="mt-4 divide-y divide-gray-200">
-              {selectedRoundMatches.map((match) => {
+              {displayedSelectedRoundMatches.map((match) => {
                 const isBye = match.notes === "BYE";
                 const playerOneName = playerDisplayNames[match.player_one_id] || "Player one";
 
