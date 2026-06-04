@@ -9,7 +9,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Match, Player, Round, Standing, Tournament
+from app.models import Match, Player, PlayerProfile, Round, Standing, Tournament
+from app.player_profiles import get_or_create_player_profile
 from app.schemas import (
     RoundCsvImportSummary,
     RoundCsvPreviewSummary,
@@ -159,7 +160,7 @@ def parse_tournament_file(root: Element) -> dict:
         rank = parse_optional_int(child_text(tourn_player, "Rank"), "player rank")
         raw_points = parse_optional_int(child_text(tourn_player, "Points"), "player points")
         visible_points = parse_optional_int(child_text(tourn_player, "Wins"), "player wins")
-        parsed_players.append({"kts_id": player_id, "name": player_name})
+        parsed_players.append({"cossy_id": player_id, "name": player_name})
 
         if rank is not None and visible_points is not None:
             standings_rows.append(
@@ -184,29 +185,29 @@ def parse_tournament_file(root: Element) -> dict:
 
             table_number = parse_optional_int(child_text(tourn_match, "Table"), "table number")
             match_players = direct_children(tourn_match, "Player")
-            player_one_kts_id = kts_match_player_id(match_players[0] if len(match_players) > 0 else None)
-            player_two_kts_id = kts_match_player_id(match_players[1] if len(match_players) > 1 else None)
+            player_one_cossy_id = kts_match_player_id(match_players[0] if len(match_players) > 0 else None)
+            player_two_cossy_id = kts_match_player_id(match_players[1] if len(match_players) > 1 else None)
 
-            if is_bye(player_one_kts_id):
-                player_one_kts_id = None
-            if is_bye(player_two_kts_id):
-                player_two_kts_id = None
-            if not player_one_kts_id and not player_two_kts_id:
+            if is_bye(player_one_cossy_id):
+                player_one_cossy_id = None
+            if is_bye(player_two_cossy_id):
+                player_two_cossy_id = None
+            if not player_one_cossy_id and not player_two_cossy_id:
                 continue
 
             notes = None
-            if not player_one_kts_id:
-                player_one_kts_id, player_two_kts_id = player_two_kts_id, None
+            if not player_one_cossy_id:
+                player_one_cossy_id, player_two_cossy_id = player_two_cossy_id, None
                 notes = BYE_NOTE
-            elif not player_two_kts_id:
+            elif not player_two_cossy_id:
                 notes = BYE_NOTE
 
             winner_id = kts_match_player_id(direct_child(tourn_match, "Winner"))
             result_status = kts_result_status(
                 child_text(tourn_match, "Status"),
                 winner_id,
-                player_one_kts_id,
-                player_two_kts_id,
+                player_one_cossy_id,
+                player_two_cossy_id,
             )
             if notes == BYE_NOTE and result_status == "UNREPORTED":
                 result_status = "PLAYER_ONE_WIN"
@@ -216,8 +217,8 @@ def parse_tournament_file(root: Element) -> dict:
                 {
                     "round_number": round_number,
                     "table_number": table_number,
-                    "player_one_kts_id": player_one_kts_id,
-                    "player_two_kts_id": player_two_kts_id,
+                    "player_one_cossy_id": player_one_cossy_id,
+                    "player_two_cossy_id": player_two_cossy_id,
                     "result_status": result_status,
                     "notes": notes,
                 }
@@ -228,14 +229,23 @@ def parse_tournament_file(root: Element) -> dict:
         round_numbers.add(current_round)
 
     return {
-        "name": child_text(root, "Name"),
-        "kts_id": child_text(root, "ID"),
         "current_round": current_round if current_round and current_round > 0 else None,
         "players": parsed_players,
         "matches": parsed_matches,
         "round_numbers": sorted(round_numbers),
         "standings": sorted(standings_rows, key=lambda standing: int(standing["rank"])),
     }
+
+
+def delete_orphaned_player_profiles(db: Session, profile_ids: set[int]) -> None:
+    for profile_id in profile_ids:
+        has_tournament_player = db.scalar(select(Player.id).where(Player.player_profile_id == profile_id).limit(1))
+        has_standing = db.scalar(select(Standing.id).where(Standing.player_profile_id == profile_id).limit(1))
+
+        if has_tournament_player is None and has_standing is None:
+            profile = db.get(PlayerProfile, profile_id)
+            if profile is not None:
+                db.delete(profile)
 
 
 def parse_round_csv(csv_text: str) -> list[tuple[int, str, str | None, str | None]]:
@@ -418,6 +428,46 @@ def list_tournaments(db: Session = Depends(get_db)) -> list[Tournament]:
     return list(db.scalars(select(Tournament).order_by(Tournament.id)))
 
 
+@router.delete("/{tournament_id}")
+def delete_tournament(tournament_id: int, db: Session = Depends(get_db)) -> dict[str, bool]:
+    tournament = db.get(Tournament, tournament_id)
+    if tournament is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
+
+    profile_ids = {
+        profile_id
+        for profile_id in db.scalars(select(Player.player_profile_id).where(Player.tournament_id == tournament_id))
+        if profile_id is not None
+    }
+    profile_ids.update(
+        profile_id
+        for profile_id in db.scalars(select(Standing.player_profile_id).where(Standing.tournament_id == tournament_id))
+        if profile_id is not None
+    )
+
+    tournament.current_round_id = None
+    db.flush()
+
+    for match in list(db.scalars(select(Match).where(Match.tournament_id == tournament_id))):
+        db.delete(match)
+    for standing in list(db.scalars(select(Standing).where(Standing.tournament_id == tournament_id))):
+        db.delete(standing)
+    db.flush()
+
+    for round_ in list(db.scalars(select(Round).where(Round.tournament_id == tournament_id))):
+        db.delete(round_)
+    for player in list(db.scalars(select(Player).where(Player.tournament_id == tournament_id))):
+        db.delete(player)
+    db.flush()
+
+    db.delete(tournament)
+    db.flush()
+    delete_orphaned_player_profiles(db, profile_ids)
+    db.commit()
+
+    return {"deleted": True}
+
+
 @router.get("/{tournament_id}/standings", response_model=list[StandingRead])
 def list_tournament_standings(tournament_id: int, db: Session = Depends(get_db)) -> list[Standing]:
     tournament = db.get(Tournament, tournament_id)
@@ -549,9 +599,14 @@ async def import_round_csv(
 
         player = players_by_name.get(player_name)
         if player is not None:
+            if player.player_profile_id is None:
+                profile = get_or_create_player_profile(db, player_name)
+                player.player_profile_id = profile.id
+                db.flush()
             return player
 
-        player = Player(tournament_id=tournament_id, name=player_name)
+        profile = get_or_create_player_profile(db, player_name)
+        player = Player(tournament_id=tournament_id, player_profile_id=profile.id, name=player_name)
         db.add(player)
         db.flush()
         players_by_name[player.name] = player
@@ -603,8 +658,21 @@ async def import_standings_csv(
         db.delete(standing)
     db.flush()
 
+    players_by_name = {
+        player.name: player
+        for player in db.scalars(select(Player).where(Player.tournament_id == tournament_id))
+        if not is_bye(player.name)
+    }
+
     for row in standings_rows:
-        db.add(Standing(tournament_id=tournament_id, **row))
+        display_name = str(row["full_name"])
+        profile = get_or_create_player_profile(db, display_name, str(row["cossy_id"]) if row["cossy_id"] else None)
+
+        tournament_player = players_by_name.get(str(row["full_name"])) or players_by_name.get(display_name)
+        if tournament_player is not None and tournament_player.player_profile_id is None:
+            tournament_player.player_profile_id = profile.id
+
+        db.add(Standing(tournament_id=tournament_id, player_profile_id=profile.id, **row))
 
     db.commit()
 
@@ -629,8 +697,6 @@ async def import_tournament_file(
     parsed_file = parse_tournament_file(await read_xml_upload(file))
 
     tournament.current_round_id = None
-    if parsed_file["name"]:
-        tournament.name = parsed_file["name"]
     db.flush()
 
     for match in list(db.scalars(select(Match).where(Match.tournament_id == tournament_id))):
@@ -644,12 +710,13 @@ async def import_tournament_file(
         db.delete(player)
     db.flush()
 
-    players_by_kts_id: dict[str, Player] = {}
+    players_by_cossy_id: dict[str, Player] = {}
     for parsed_player in parsed_file["players"]:
-        player = Player(tournament_id=tournament_id, name=parsed_player["name"])
+        profile = get_or_create_player_profile(db, parsed_player["name"], parsed_player["cossy_id"])
+        player = Player(tournament_id=tournament_id, player_profile_id=profile.id, name=parsed_player["name"])
         db.add(player)
         db.flush()
-        players_by_kts_id[parsed_player["kts_id"]] = player
+        players_by_cossy_id[parsed_player["cossy_id"]] = player
 
     rounds_by_number: dict[int, Round] = {}
     for round_number in parsed_file["round_numbers"]:
@@ -660,13 +727,13 @@ async def import_tournament_file(
 
     matches_imported = 0
     for parsed_match in parsed_file["matches"]:
-        player_one = players_by_kts_id.get(parsed_match["player_one_kts_id"])
+        player_one = players_by_cossy_id.get(parsed_match["player_one_cossy_id"])
         if player_one is None:
             continue
 
         player_two = None
-        if parsed_match["player_two_kts_id"]:
-            player_two = players_by_kts_id.get(parsed_match["player_two_kts_id"])
+        if parsed_match["player_two_cossy_id"]:
+            player_two = players_by_cossy_id.get(parsed_match["player_two_cossy_id"])
             if player_two is None:
                 continue
 
@@ -689,10 +756,11 @@ async def import_tournament_file(
 
     standings_imported = 0
     for standing_row in parsed_file["standings"]:
-        if standing_row["cossy_id"] not in players_by_kts_id:
+        player = players_by_cossy_id.get(standing_row["cossy_id"])
+        if player is None:
             continue
 
-        db.add(Standing(tournament_id=tournament_id, **standing_row))
+        db.add(Standing(tournament_id=tournament_id, player_profile_id=player.player_profile_id, **standing_row))
         standings_imported += 1
 
     current_round_number = parsed_file["current_round"]
@@ -702,7 +770,7 @@ async def import_tournament_file(
     db.commit()
 
     return TournamentFileImportSummary(
-        players_imported=len(players_by_kts_id),
+        players_imported=len(players_by_cossy_id),
         rounds_imported=len(rounds_by_number),
         matches_imported=matches_imported,
         standings_imported=standings_imported,

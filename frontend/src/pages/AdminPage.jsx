@@ -10,6 +10,7 @@ export default function AdminPage() {
   const [location, setLocation] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
+  const [deletingTournamentId, setDeletingTournamentId] = useState(null);
   const [error, setError] = useState("");
   const [shareTournament, setShareTournament] = useState(null);
   const [copyMessage, setCopyMessage] = useState("");
@@ -64,15 +65,46 @@ export default function AdminPage() {
     }
   }
 
+  async function handleDeleteTournament(tournament) {
+    const shouldDelete = window.confirm(
+      "Delete this tournament? This will permanently remove its rounds, matches, standings, and tournament history. Player profiles from other tournaments will be kept.",
+    );
+
+    if (!shouldDelete) {
+      return;
+    }
+
+    try {
+      setDeletingTournamentId(tournament.id);
+      setError("");
+      await api.delete(`/tournaments/${tournament.id}`);
+      setTournaments((currentTournaments) => currentTournaments.filter((currentTournament) => currentTournament.id !== tournament.id));
+      setShareTournament((currentShareTournament) => (currentShareTournament?.id === tournament.id ? null : currentShareTournament));
+      setCopyMessage("");
+    } catch {
+      setError("Could not delete tournament.");
+    } finally {
+      setDeletingTournamentId(null);
+    }
+  }
+
   function getPublicUrl(tournamentId) {
     return `${window.location.origin}/t/${tournamentId}`;
   }
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-5xl flex-col gap-6 px-4 py-8">
-      <header>
-        <p className="text-sm font-medium uppercase tracking-wide text-blue-700">Admin</p>
-        <h1 className="mt-2 text-3xl font-semibold text-gray-950">Tournaments</h1>
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-sm font-medium uppercase tracking-wide text-blue-700">Admin</p>
+          <h1 className="mt-2 text-3xl font-semibold text-gray-950">Tournaments</h1>
+        </div>
+        <Link
+          className="self-start rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 sm:self-auto"
+          to="/admin/players"
+        >
+          Community Players
+        </Link>
       </header>
 
       <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
@@ -149,6 +181,14 @@ export default function AdminPage() {
                     type="button"
                   >
                     Share
+                  </button>
+                  <button
+                    className="rounded-md border border-red-200 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+                    disabled={deletingTournamentId === tournament.id}
+                    onClick={() => handleDeleteTournament(tournament)}
+                    type="button"
+                  >
+                    {deletingTournamentId === tournament.id ? "Deleting..." : "Delete"}
                   </button>
                 </div>
               </li>
