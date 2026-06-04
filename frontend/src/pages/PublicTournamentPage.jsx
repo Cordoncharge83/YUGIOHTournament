@@ -165,23 +165,27 @@ export default function PublicTournamentPage() {
       <header className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
         <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">Tournament</p>
         <h1 className="mt-2 text-3xl font-semibold text-gray-950">{tournament?.name || `Tournament #${id}`}</h1>
-        <div className="mt-4 flex flex-wrap gap-2 text-sm">
-          <span className="rounded-full border border-gray-300 bg-gray-50 px-3 py-1 font-medium text-gray-700">
-            {tournament?.location || "Location not set"}
-          </span>
+        <div className="mt-4 grid grid-cols-2 gap-x-6 gap-y-3 text-sm sm:grid-cols-4">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Location</p>
+            <p className="mt-1 font-medium text-gray-950">{tournament?.location || "Location not set"}</p>
+          </div>
           {currentRound ? (
-            <span className="rounded-full border border-gray-300 bg-blue-100 px-3 py-1 font-semibold text-blue-800">
-              Current Round {currentRound.number}
-            </span>
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Current Round</p>
+              <p className="mt-1 font-semibold text-gray-950">{currentRound.number}</p>
+            </div>
           ) : null}
           {playerCount > 0 ? (
-            <span className="rounded-full border border-gray-300 bg-gray-50 px-3 py-1 font-medium text-gray-700">
-              {playerCount} Players
-            </span>
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Players</p>
+              <p className="mt-1 font-semibold text-gray-950">{playerCount}</p>
+            </div>
           ) : null}
-          <span className="rounded-full border border-gray-300 bg-gray-50 px-3 py-1 font-medium text-gray-700">
-            Last updated {lastUpdated}
-          </span>
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Updated</p>
+            <p className="mt-1 font-medium text-gray-950">{lastUpdated}</p>
+          </div>
         </div>
       </header>
 
@@ -257,10 +261,7 @@ export default function PublicTournamentPage() {
                         </div>
                       </div>
 
-                      <span className="mt-3 inline-flex rounded-full bg-blue-100 px-2.5 py-1 text-xs font-semibold text-blue-800">
-                        Current round
-                      </span>
-                      <span className={`ml-2 mt-3 inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${statusBadge.className}`}>
+                      <span className={`mt-3 inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${statusBadge.className}`}>
                         {statusBadge.label}
                       </span>
 
