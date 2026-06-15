@@ -2,7 +2,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import create_db_tables
-from app.routes import matches, player_profiles, players, public, rounds, tournaments
+from app.kts_watcher import kts_auto_sync_service
+from app.routes import auto_sync, matches, player_profiles, players, public, rounds, tournaments
 from app.schemas import HealthCheck
 
 app = FastAPI(title="Yu-Gi-Oh Tournament Manager API")
@@ -19,11 +20,18 @@ app.include_router(rounds.router)
 app.include_router(matches.router)
 app.include_router(player_profiles.router)
 app.include_router(public.router)
+app.include_router(auto_sync.router)
 
 
 @app.on_event("startup")
 def on_startup() -> None:
     create_db_tables()
+    kts_auto_sync_service.start()
+
+
+@app.on_event("shutdown")
+def on_shutdown() -> None:
+    kts_auto_sync_service.stop()
 
 
 @app.get("/health", response_model=HealthCheck)

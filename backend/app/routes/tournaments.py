@@ -237,6 +237,93 @@ def parse_tournament_file(root: Element) -> dict:
     }
 
 
+def import_parsed_tournament_file(db: Session, tournament_id: int, parsed_file: dict) -> TournamentFileImportSummary:
+    tournament = db.get(Tournament, tournament_id)
+    if tournament is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
+
+    tournament.current_round_id = None
+    db.flush()
+
+    for match in list(db.scalars(select(Match).where(Match.tournament_id == tournament_id))):
+        db.delete(match)
+    for standing in list(db.scalars(select(Standing).where(Standing.tournament_id == tournament_id))):
+        db.delete(standing)
+    db.flush()
+    for round_ in list(db.scalars(select(Round).where(Round.tournament_id == tournament_id))):
+        db.delete(round_)
+    for player in list(db.scalars(select(Player).where(Player.tournament_id == tournament_id))):
+        db.delete(player)
+    db.flush()
+
+    players_by_cossy_id: dict[str, Player] = {}
+    for parsed_player in parsed_file["players"]:
+        profile = get_or_create_player_profile(db, parsed_player["name"], parsed_player["cossy_id"])
+        player = Player(tournament_id=tournament_id, player_profile_id=profile.id, name=parsed_player["name"])
+        db.add(player)
+        db.flush()
+        players_by_cossy_id[parsed_player["cossy_id"]] = player
+
+    rounds_by_number: dict[int, Round] = {}
+    for round_number in parsed_file["round_numbers"]:
+        round_ = Round(tournament_id=tournament_id, number=round_number)
+        db.add(round_)
+        db.flush()
+        rounds_by_number[round_number] = round_
+
+    matches_imported = 0
+    for parsed_match in parsed_file["matches"]:
+        player_one = players_by_cossy_id.get(parsed_match["player_one_cossy_id"])
+        if player_one is None:
+            continue
+
+        player_two = None
+        if parsed_match["player_two_cossy_id"]:
+            player_two = players_by_cossy_id.get(parsed_match["player_two_cossy_id"])
+            if player_two is None:
+                continue
+
+        round_ = rounds_by_number.get(parsed_match["round_number"])
+        if round_ is None:
+            continue
+
+        db.add(
+            Match(
+                tournament_id=tournament_id,
+                round_id=round_.id,
+                table_number=parsed_match["table_number"],
+                player_one_id=player_one.id,
+                player_two_id=player_two.id if player_two else None,
+                result_status=parsed_match["result_status"],
+                notes=parsed_match["notes"],
+            )
+        )
+        matches_imported += 1
+
+    standings_imported = 0
+    for standing_row in parsed_file["standings"]:
+        player = players_by_cossy_id.get(standing_row["cossy_id"])
+        if player is None:
+            continue
+
+        db.add(Standing(tournament_id=tournament_id, player_profile_id=player.player_profile_id, **standing_row))
+        standings_imported += 1
+
+    current_round_number = parsed_file["current_round"]
+    if current_round_number is not None and current_round_number in rounds_by_number:
+        tournament.current_round_id = rounds_by_number[current_round_number].id
+
+    db.commit()
+
+    return TournamentFileImportSummary(
+        players_imported=len(players_by_cossy_id),
+        rounds_imported=len(rounds_by_number),
+        matches_imported=matches_imported,
+        standings_imported=standings_imported,
+        current_round=current_round_number if tournament.current_round_id is not None else None,
+    )
+
+
 def delete_orphaned_player_profiles(db: Session, profile_ids: set[int]) -> None:
     for profile_id in profile_ids:
         has_tournament_player = db.scalar(select(Player.id).where(Player.player_profile_id == profile_id).limit(1))
@@ -690,89 +777,5 @@ async def import_tournament_file(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
 ) -> TournamentFileImportSummary:
-    tournament = db.get(Tournament, tournament_id)
-    if tournament is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
-
     parsed_file = parse_tournament_file(await read_xml_upload(file))
-
-    tournament.current_round_id = None
-    db.flush()
-
-    for match in list(db.scalars(select(Match).where(Match.tournament_id == tournament_id))):
-        db.delete(match)
-    for standing in list(db.scalars(select(Standing).where(Standing.tournament_id == tournament_id))):
-        db.delete(standing)
-    db.flush()
-    for round_ in list(db.scalars(select(Round).where(Round.tournament_id == tournament_id))):
-        db.delete(round_)
-    for player in list(db.scalars(select(Player).where(Player.tournament_id == tournament_id))):
-        db.delete(player)
-    db.flush()
-
-    players_by_cossy_id: dict[str, Player] = {}
-    for parsed_player in parsed_file["players"]:
-        profile = get_or_create_player_profile(db, parsed_player["name"], parsed_player["cossy_id"])
-        player = Player(tournament_id=tournament_id, player_profile_id=profile.id, name=parsed_player["name"])
-        db.add(player)
-        db.flush()
-        players_by_cossy_id[parsed_player["cossy_id"]] = player
-
-    rounds_by_number: dict[int, Round] = {}
-    for round_number in parsed_file["round_numbers"]:
-        round_ = Round(tournament_id=tournament_id, number=round_number)
-        db.add(round_)
-        db.flush()
-        rounds_by_number[round_number] = round_
-
-    matches_imported = 0
-    for parsed_match in parsed_file["matches"]:
-        player_one = players_by_cossy_id.get(parsed_match["player_one_cossy_id"])
-        if player_one is None:
-            continue
-
-        player_two = None
-        if parsed_match["player_two_cossy_id"]:
-            player_two = players_by_cossy_id.get(parsed_match["player_two_cossy_id"])
-            if player_two is None:
-                continue
-
-        round_ = rounds_by_number.get(parsed_match["round_number"])
-        if round_ is None:
-            continue
-
-        db.add(
-            Match(
-                tournament_id=tournament_id,
-                round_id=round_.id,
-                table_number=parsed_match["table_number"],
-                player_one_id=player_one.id,
-                player_two_id=player_two.id if player_two else None,
-                result_status=parsed_match["result_status"],
-                notes=parsed_match["notes"],
-            )
-        )
-        matches_imported += 1
-
-    standings_imported = 0
-    for standing_row in parsed_file["standings"]:
-        player = players_by_cossy_id.get(standing_row["cossy_id"])
-        if player is None:
-            continue
-
-        db.add(Standing(tournament_id=tournament_id, player_profile_id=player.player_profile_id, **standing_row))
-        standings_imported += 1
-
-    current_round_number = parsed_file["current_round"]
-    if current_round_number is not None and current_round_number in rounds_by_number:
-        tournament.current_round_id = rounds_by_number[current_round_number].id
-
-    db.commit()
-
-    return TournamentFileImportSummary(
-        players_imported=len(players_by_cossy_id),
-        rounds_imported=len(rounds_by_number),
-        matches_imported=matches_imported,
-        standings_imported=standings_imported,
-        current_round=current_round_number if tournament.current_round_id is not None else None,
-    )
+    return import_parsed_tournament_file(db, tournament_id, parsed_file)

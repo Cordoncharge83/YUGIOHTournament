@@ -56,6 +56,8 @@ export default function AdminTournamentPage() {
   const [isImportingTournamentFile, setIsImportingTournamentFile] = useState(false);
   const [tournamentFileImportMessage, setTournamentFileImportMessage] = useState("");
   const [tournamentFileImportError, setTournamentFileImportError] = useState("");
+  const [autoSyncStatus, setAutoSyncStatus] = useState(null);
+  const [isRefreshingAutoSync, setIsRefreshingAutoSync] = useState(false);
   const [activeTournamentTab, setActiveTournamentTab] = useState("matches");
   const [isManualToolsOpen, setIsManualToolsOpen] = useState(true);
   const [isAdvancedImportToolsOpen, setIsAdvancedImportToolsOpen] = useState(false);
@@ -129,13 +131,43 @@ export default function AdminTournamentPage() {
     }
   }
 
+  async function fetchAutoSyncStatus() {
+    try {
+      const response = await api.get("/auto-sync/status");
+      setAutoSyncStatus(response.data);
+    } catch {
+      setAutoSyncStatus(null);
+    }
+  }
+
+  async function fetchTournamentDetailData() {
+    await Promise.all([
+      fetchTournament(),
+      fetchPlayers(),
+      fetchRounds(),
+      fetchMatches(),
+      fetchStandings(),
+      fetchAutoSyncStatus(),
+    ]);
+  }
+
+  async function handleRefreshAutoSync() {
+    try {
+      setIsRefreshingAutoSync(true);
+      await fetchTournamentDetailData();
+    } finally {
+      setIsRefreshingAutoSync(false);
+    }
+  }
+
   useEffect(() => {
-    fetchTournament();
-    fetchPlayers();
-    fetchRounds();
-    fetchMatches();
-    fetchStandings();
+    fetchTournamentDetailData();
   }, [id]);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(fetchAutoSyncStatus, 5000);
+    return () => window.clearInterval(intervalId);
+  }, []);
 
   async function handleCreateNextRound() {
     const nextRoundNumber =
@@ -452,6 +484,12 @@ export default function AdminTournamentPage() {
           || cossyId.includes(normalizedStandingsSearch);
       })
     : standings;
+  const watchedFileName = autoSyncStatus?.watch_file
+    ? autoSyncStatus.watch_file.split(/[\\/]/).filter(Boolean).pop()
+    : null;
+  const lastSyncTime = autoSyncStatus?.last_sync_at
+    ? new Date(autoSyncStatus.last_sync_at).toLocaleString()
+    : null;
 
   useEffect(() => {
     if (rounds.length === 0) {
@@ -621,6 +659,48 @@ export default function AdminTournamentPage() {
 
         {tournamentFileImportMessage ? <p className="mt-3 text-sm font-medium text-green-700">{tournamentFileImportMessage}</p> : null}
         {tournamentFileImportError ? <p className="mt-3 text-sm font-medium text-red-700">{tournamentFileImportError}</p> : null}
+      </section>
+
+      <section className="rounded-lg border border-yellow-700/40 bg-yellow-950/10 p-4 shadow-sm">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h2 className="text-base font-semibold text-gray-950">KTS auto-sync</h2>
+            <p className="mt-1 text-sm font-semibold text-gray-700">
+              Auto-sync: {autoSyncStatus?.enabled ? "Enabled" : "Disabled"}
+            </p>
+          </div>
+          <button
+            className="w-fit rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
+            disabled={isRefreshingAutoSync}
+            onClick={handleRefreshAutoSync}
+            type="button"
+          >
+            {isRefreshingAutoSync ? "Refreshing..." : "Refresh"}
+          </button>
+        </div>
+        <div className="mt-3 grid gap-3 text-sm text-gray-700 sm:grid-cols-2 lg:grid-cols-4">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Watched file</p>
+            <p className="mt-1 font-medium text-gray-950">{watchedFileName || "Not configured"}</p>
+          </div>
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Target tournament</p>
+            <p className="mt-1 font-medium text-gray-950">{autoSyncStatus?.tournament_id || "-"}</p>
+          </div>
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Last sync</p>
+            <p className="mt-1 font-medium text-gray-950">{lastSyncTime || "-"}</p>
+          </div>
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Status</p>
+            <p className="mt-1 font-medium text-gray-950">{autoSyncStatus?.last_status || "-"}</p>
+          </div>
+        </div>
+        {autoSyncStatus?.last_error ? (
+          <p className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">
+            {autoSyncStatus.last_error}
+          </p>
+        ) : null}
       </section>
 
       <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">

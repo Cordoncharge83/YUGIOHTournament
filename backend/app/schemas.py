@@ -10,6 +10,16 @@ class HealthCheck(BaseModel):
     status: str
 
 
+class AutoSyncStatusRead(BaseModel):
+    enabled: bool
+    watch_file: str | None
+    tournament_id: int | None
+    last_file: str | None
+    last_sync_at: datetime | None
+    last_status: str | None
+    last_error: str | None
+
+
 class TournamentCreate(BaseModel):
     name: str
     location: str | None = None
