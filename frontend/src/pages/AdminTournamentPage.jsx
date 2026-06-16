@@ -69,6 +69,7 @@ export default function AdminTournamentPage() {
   const [isRunningAutoSync, setIsRunningAutoSync] = useState(false);
   const [isRefreshingAutoSyncStatus, setIsRefreshingAutoSyncStatus] = useState(false);
   const [isChoosingAutoSyncFile, setIsChoosingAutoSyncFile] = useState(false);
+  const lastHandledAutoSyncAtRef = useRef(null);
   const [activeTournamentTab, setActiveTournamentTab] = useState("matches");
   const [isManualToolsOpen, setIsManualToolsOpen] = useState(true);
   const [isAdvancedImportToolsOpen, setIsAdvancedImportToolsOpen] = useState(false);
@@ -151,13 +152,19 @@ export default function AdminTournamentPage() {
     }
   }
 
-  async function fetchTournamentDetailData() {
+  async function fetchTournamentContentData() {
     await Promise.all([
       fetchTournament(),
       fetchPlayers(),
       fetchRounds(),
       fetchMatches(),
       fetchStandings(),
+    ]);
+  }
+
+  async function fetchTournamentDetailData() {
+    await Promise.all([
+      fetchTournamentContentData(),
       fetchAutoSyncStatus(),
     ]);
   }
@@ -289,6 +296,22 @@ export default function AdminTournamentPage() {
     const intervalId = window.setInterval(fetchAutoSyncStatus, 5000);
     return () => window.clearInterval(intervalId);
   }, []);
+
+  useEffect(() => {
+    const lastSyncAt = autoSyncStatus?.last_sync_at;
+    const isCurrentTournamentSync = Number(autoSyncStatus?.tournament_id) === Number(id);
+
+    if (!lastSyncAt || !autoSyncStatus?.enabled || !isCurrentTournamentSync) {
+      return;
+    }
+
+    if (lastHandledAutoSyncAtRef.current === lastSyncAt) {
+      return;
+    }
+
+    lastHandledAutoSyncAtRef.current = lastSyncAt;
+    fetchTournamentContentData();
+  }, [autoSyncStatus?.last_sync_at, autoSyncStatus?.enabled, autoSyncStatus?.tournament_id, id]);
 
   useEffect(() => {
     if (!autoSyncStatus?.file_path) {
