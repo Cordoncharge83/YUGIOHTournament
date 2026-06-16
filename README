@@ -226,6 +226,14 @@ cd frontend
 npm run tauri:dev
 ```
 
+In Tauri dev mode, the desktop shell starts the FastAPI backend automatically from the repository `backend` directory:
+
+```bash
+uvicorn app.main:app --reload
+```
+
+The launcher prefers `backend/.venv/Scripts/python.exe -m uvicorn` when the virtual environment exists. If something is already listening on `127.0.0.1:8000`, Tauri assumes the backend is already running and does not start a duplicate process. When the Tauri app exits, it stops the backend process it started.
+
 The normal web workflow remains unchanged:
 
 ```bash
@@ -233,7 +241,7 @@ cd frontend
 npm run dev
 ```
 
-This proof of concept only wraps the existing React UI. It does not package the FastAPI backend, add a native file picker, or change auto-sync behavior yet.
+This proof of concept wraps the existing React UI and starts the existing FastAPI backend for local desktop development. It does not package Python or the backend into the final installer yet.
 
 ---
 
