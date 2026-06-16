@@ -9,6 +9,7 @@
     "tauri:build": "tauri build"
   },
   "dependencies": {
+    "@tauri-apps/plugin-dialog": "^2.7.1",
     "@tauri-apps/plugin-opener": "^2.5.4",
     "@vitejs/plugin-react": "^5.0.0",
     "axios": "^1.7.9",

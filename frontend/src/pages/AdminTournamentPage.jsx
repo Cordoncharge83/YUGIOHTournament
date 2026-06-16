@@ -68,6 +68,7 @@ export default function AdminTournamentPage() {
   const [isDisablingAutoSync, setIsDisablingAutoSync] = useState(false);
   const [isRunningAutoSync, setIsRunningAutoSync] = useState(false);
   const [isRefreshingAutoSyncStatus, setIsRefreshingAutoSyncStatus] = useState(false);
+  const [isChoosingAutoSyncFile, setIsChoosingAutoSyncFile] = useState(false);
   const [activeTournamentTab, setActiveTournamentTab] = useState("matches");
   const [isManualToolsOpen, setIsManualToolsOpen] = useState(true);
   const [isAdvancedImportToolsOpen, setIsAdvancedImportToolsOpen] = useState(false);
@@ -161,6 +162,15 @@ export default function AdminTournamentPage() {
     ]);
   }
 
+  async function enableAutoSyncForPath(filePath) {
+    const response = await api.post("/auto-sync/enable", {
+      tournament_id: Number(id),
+      file_path: filePath,
+    });
+    setAutoSyncStatus(response.data);
+    return response.data;
+  }
+
   async function handleRefreshAutoSyncStatus() {
     try {
       setIsRefreshingAutoSyncStatus(true);
@@ -183,16 +193,57 @@ export default function AdminTournamentPage() {
       setIsEnablingAutoSync(true);
       setAutoSyncError("");
       setAutoSyncMessage("");
-      const response = await api.post("/auto-sync/enable", {
-        tournament_id: Number(id),
-        file_path: autoSyncFilePath.trim(),
-      });
-      setAutoSyncStatus(response.data);
+      await enableAutoSyncForPath(autoSyncFilePath.trim());
       setAutoSyncMessage("Auto-sync enabled.");
     } catch (error) {
       setAutoSyncError(getApiErrorMessage(error, "Could not enable auto-sync."));
     } finally {
       setIsEnablingAutoSync(false);
+    }
+  }
+
+  async function handleChooseAutoSyncFile() {
+    if (!isTauriApp()) {
+      return;
+    }
+
+    try {
+      setIsChoosingAutoSyncFile(true);
+      setAutoSyncError("");
+      setAutoSyncMessage("");
+      const { open } = await import("@tauri-apps/plugin-dialog");
+      const selectedFile = await open({
+        directory: false,
+        multiple: false,
+        title: "Choose KTS Tournament File",
+        filters: [
+          {
+            name: "KTS Tournament File",
+            extensions: ["Tournament"],
+          },
+        ],
+      });
+
+      const selectedPath = Array.isArray(selectedFile) ? selectedFile[0] : selectedFile;
+
+      if (!selectedPath) {
+        return;
+      }
+
+      setAutoSyncFilePath(selectedPath);
+      await enableAutoSyncForPath(selectedPath);
+
+      const syncResponse = await api.post("/auto-sync/run-now");
+      setAutoSyncStatus(syncResponse.data.status);
+      await fetchTournamentDetailData();
+      setAutoSyncMessage(
+        `Selected KTS file, enabled auto-sync, and imported ${syncResponse.data.summary.players_imported} players, ${syncResponse.data.summary.rounds_imported} rounds, ${syncResponse.data.summary.matches_imported} matches, and ${syncResponse.data.summary.standings_imported} standings entries.`,
+      );
+    } catch (error) {
+      setAutoSyncError(getApiErrorMessage(error, "Could not choose and sync KTS file."));
+      await fetchAutoSyncStatus();
+    } finally {
+      setIsChoosingAutoSyncFile(false);
     }
   }
 
@@ -592,6 +643,8 @@ export default function AdminTournamentPage() {
   const lastSyncTime = autoSyncStatus?.last_sync_at
     ? new Date(autoSyncStatus.last_sync_at).toLocaleString()
     : null;
+  const isRunningInTauri = isTauriApp();
+  const autoSyncStateLabel = autoSyncStatus?.enabled ? "Watching / Enabled" : "Disabled";
 
   useEffect(() => {
     if (rounds.length === 0) {
@@ -732,11 +785,14 @@ export default function AdminTournamentPage() {
           <p className="text-sm font-medium uppercase tracking-wide text-blue-700">KTS integration</p>
           <h2 className="mt-1 text-xl font-semibold text-gray-950">KTS Tournament File</h2>
           <p className="mt-2 text-sm text-gray-700">
-            Use a KTS .Tournament file either as a one-time upload or as a watched live-event source.
+            {isRunningInTauri
+              ? "Choose the original KTS .Tournament file to import it now and keep it watched during the event."
+              : "Use a KTS .Tournament file either as a one-time upload or as a watched live-event source."}
           </p>
         </div>
 
-        <div className="mt-5 grid gap-4 lg:grid-cols-2">
+        <div className={`mt-5 grid gap-4 ${isRunningInTauri ? "" : "lg:grid-cols-2"}`}>
+          {!isRunningInTauri ? (
           <section className="rounded-lg border border-blue-200 bg-white p-4 shadow-sm">
             <h3 className="text-base font-semibold text-gray-950">Manual Import</h3>
             <p className="mt-1 text-sm text-gray-700">
@@ -771,19 +827,26 @@ export default function AdminTournamentPage() {
             {tournamentFileImportMessage ? <p className="mt-3 text-sm font-medium text-green-700">{tournamentFileImportMessage}</p> : null}
             {tournamentFileImportError ? <p className="mt-3 text-sm font-medium text-red-700">{tournamentFileImportError}</p> : null}
           </section>
+          ) : null}
 
           <section className="rounded-lg border border-yellow-700/40 bg-yellow-50/30 p-4 shadow-sm">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
-                <h3 className="text-base font-semibold text-gray-950">Auto-Sync</h3>
+                <h3 className="text-base font-semibold text-gray-950">
+                  {isRunningInTauri ? "Live KTS File" : "Auto-Sync"}
+                </h3>
                 <p className="mt-1 text-sm text-gray-700">
-                  Watch the original KTS file on this computer and automatically import changes during a live event.
+                  {isRunningInTauri
+                    ? "Select the real KTS file path, import it immediately, and watch future KTS saves."
+                    : "Watch the original KTS file on this computer and automatically import changes during a live event."}
                 </p>
-                <p className="mt-2 text-xs font-medium text-gray-500">
-                  For the web version, paste the full file path. A desktop version can later use a file picker.
-                </p>
+                {!isRunningInTauri ? (
+                  <p className="mt-2 text-xs font-medium text-gray-500">
+                    Browser mode cannot read real local file paths, so paste the full path for auto-sync.
+                  </p>
+                ) : null}
                 <p className="mt-2 text-sm font-semibold text-gray-700">
-                  Status: {autoSyncStatus?.enabled ? "Enabled" : "Disabled"}
+                  Status: {autoSyncStateLabel}
                 </p>
               </div>
               <button
@@ -802,32 +865,53 @@ export default function AdminTournamentPage() {
               </p>
             ) : null}
 
-            <form className="mt-4 grid gap-3" onSubmit={handleEnableAutoSync}>
-              <label className="flex flex-col gap-1 text-sm font-medium text-gray-700">
-                .Tournament file path
-                <input
-                  className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-950 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
-                  onChange={(event) => {
-                    setAutoSyncFilePath(event.target.value);
-                    setAutoSyncMessage("");
-                    setAutoSyncError("");
-                  }}
-                  placeholder="C:\Users\...\Competitive Tournament (ID ...).Tournament"
-                  type="text"
-                  value={autoSyncFilePath}
-                />
-              </label>
-              <div className="flex flex-wrap gap-2">
+            {isRunningInTauri ? (
+              <div className="mt-4 rounded-md border border-yellow-700/30 bg-yellow-100/40 p-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-yellow-800">Primary action</p>
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <button
+                    className="rounded-md bg-yellow-700 px-4 py-2 text-sm font-medium text-white hover:bg-yellow-800 disabled:cursor-not-allowed disabled:bg-gray-400"
+                    disabled={isChoosingAutoSyncFile || isEnablingAutoSync || isRunningAutoSync}
+                    onClick={handleChooseAutoSyncFile}
+                    type="button"
+                  >
+                    {isChoosingAutoSyncFile ? "Choosing..." : "Choose KTS File"}
+                  </button>
+                  <span className="text-xs font-medium text-gray-600">
+                    Imports the selected file now and starts watching it automatically.
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <form className="mt-4 grid gap-3" onSubmit={handleEnableAutoSync}>
+                <label className="flex flex-col gap-1 text-sm font-medium text-gray-700">
+                  .Tournament file path
+                  <input
+                    className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-950 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
+                    onChange={(event) => {
+                      setAutoSyncFilePath(event.target.value);
+                      setAutoSyncMessage("");
+                      setAutoSyncError("");
+                    }}
+                    placeholder="C:\Users\...\Competitive Tournament (ID ...).Tournament"
+                    type="text"
+                    value={autoSyncFilePath}
+                  />
+                </label>
                 <button
-                  className="rounded-md bg-blue-700 px-4 py-2 text-sm font-medium text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:bg-gray-400"
-                  disabled={isEnablingAutoSync}
+                  className="w-fit rounded-md bg-blue-700 px-4 py-2 text-sm font-medium text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:bg-gray-400"
+                  disabled={isEnablingAutoSync || isChoosingAutoSyncFile}
                   type="submit"
                 >
                   {isEnablingAutoSync ? "Enabling..." : "Enable Auto-Sync"}
                 </button>
+              </form>
+            )}
+
+            <div className="mt-4 flex flex-wrap gap-2">
                 <button
                   className="rounded-md bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-gray-700 disabled:cursor-not-allowed disabled:bg-gray-400"
-                  disabled={!autoSyncStatus?.enabled || isRunningAutoSync}
+                  disabled={!autoSyncStatus?.enabled || isRunningAutoSync || isChoosingAutoSyncFile}
                   onClick={handleRunAutoSyncNow}
                   type="button"
                 >
@@ -841,8 +925,7 @@ export default function AdminTournamentPage() {
                 >
                   {isDisablingAutoSync ? "Disabling..." : "Disable Auto-Sync"}
                 </button>
-              </div>
-            </form>
+            </div>
 
             <div className="mt-4 grid gap-3 text-sm text-gray-700 sm:grid-cols-2">
               <div>
