@@ -2,6 +2,11 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import api from "../api/client";
+import { Badge } from "../components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
+import { Input } from "../components/ui/input";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
+import { Tabs, TabsList, TabsTrigger } from "../components/ui/tabs";
 
 function formatPlayerDisplayName(name) {
   return (name || "").replace(/\s*\([^()]*\)\s*$/, "").trim();
@@ -162,65 +167,52 @@ export default function PublicTournamentPage() {
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-5xl flex-col gap-5 px-4 py-5 sm:py-8">
-      <header className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
-        <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">Tournament</p>
-        <h1 className="mt-2 text-3xl font-semibold text-gray-950">{tournament?.name || `Tournament #${id}`}</h1>
+      <Card className="border-slate-700/70 bg-slate-950/85">
+        <CardHeader>
+        <p className="text-xs font-semibold uppercase tracking-wide text-amber-300">Tournament</p>
+        <CardTitle className="mt-2 text-3xl">{tournament?.name || `Tournament #${id}`}</CardTitle>
+        </CardHeader>
+        <CardContent>
         <div className="mt-4 grid grid-cols-2 gap-x-6 gap-y-3 text-sm sm:grid-cols-4">
           <div>
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Location</p>
-            <p className="mt-1 font-medium text-gray-950">{tournament?.location || "Location not set"}</p>
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Location</p>
+            <p className="mt-1 font-medium text-slate-50">{tournament?.location || "Location not set"}</p>
           </div>
           {currentRound ? (
             <div>
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Current Round</p>
-              <p className="mt-1 font-semibold text-gray-950">{currentRound.number}</p>
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Current Round</p>
+              <p className="mt-1 font-semibold text-slate-50">{currentRound.number}</p>
             </div>
           ) : null}
           {playerCount > 0 ? (
             <div>
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Players</p>
-              <p className="mt-1 font-semibold text-gray-950">{playerCount}</p>
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Players</p>
+              <p className="mt-1 font-semibold text-slate-50">{playerCount}</p>
             </div>
           ) : null}
           <div>
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Updated</p>
-            <p className="mt-1 font-medium text-gray-950">{lastUpdated}</p>
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Updated</p>
+            <p className="mt-1 font-medium text-slate-50">{lastUpdated}</p>
           </div>
         </div>
-      </header>
+        </CardContent>
+      </Card>
 
-      <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
-        <div className="flex overflow-x-auto overflow-y-hidden border-b border-gray-200">
-          <button
-            className={`shrink-0 px-4 py-2 text-sm font-semibold ${
-              activeTab === "pairings"
-                ? "border-b-2 border-blue-700 text-blue-700"
-                : "text-gray-500 hover:text-gray-800"
-            }`}
-            onClick={() => setActiveTab("pairings")}
-            type="button"
-          >
-            Pairings
-          </button>
-          <button
-            className={`shrink-0 px-4 py-2 text-sm font-semibold ${
-              activeTab === "standings"
-                ? "border-b-2 border-blue-700 text-blue-700"
-                : "text-gray-500 hover:text-gray-800"
-            }`}
-            onClick={() => setActiveTab("standings")}
-            type="button"
-          >
-            Standings
-          </button>
-        </div>
+      <Card className="border-slate-700/70 bg-slate-950/85">
+        <CardContent className="p-5">
+        <Tabs onValueChange={setActiveTab} value={activeTab}>
+          <TabsList>
+            <TabsTrigger value="pairings">Pairings</TabsTrigger>
+            <TabsTrigger value="standings">Standings</TabsTrigger>
+          </TabsList>
+        </Tabs>
 
-        {error ? <p className="mt-4 text-sm font-medium text-red-700">{error}</p> : null}
-        {isLoading ? <p className="mt-4 text-gray-700">Loading tournament...</p> : null}
+        {error ? <p className="mt-4 text-sm font-medium text-rose-300">{error}</p> : null}
+        {isLoading ? <p className="mt-4 text-slate-400">Loading tournament...</p> : null}
 
         {activeTab === "pairings" ? (
-          <input
-            className="mt-4 w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-950 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
+          <Input
+            className="mt-4"
             onChange={(event) => setPlayerSearch(event.target.value)}
             placeholder="Search player name..."
             type="search"
@@ -229,13 +221,13 @@ export default function PublicTournamentPage() {
         ) : null}
 
         {activeTab === "pairings" && !isLoading && !currentRound ? (
-          <p className="mt-4 text-gray-700">No current round is set.</p>
+          <p className="mt-4 text-slate-400">No current round is set.</p>
         ) : null}
 
         {activeTab === "pairings" && currentRound && normalizedPlayerSearch ? (
-          <section className="mt-4 rounded-lg border border-gray-300 bg-white p-4">
+          <section className="mt-4 rounded-lg border border-slate-700 bg-slate-900/55 p-4">
             {searchedMatches.length === 0 ? (
-              <p className="text-sm text-gray-700">No match found in the current round for '{playerSearch.trim()}'.</p>
+              <p className="text-sm text-slate-400">No match found in the current round for '{playerSearch.trim()}'.</p>
             ) : (
               <ul className="grid gap-3 sm:grid-cols-2">
                 {searchedMatches.map((match) => {
@@ -247,28 +239,28 @@ export default function PublicTournamentPage() {
 
                   return (
                     <li
-                      className="rounded-lg border border-gray-200 bg-gray-50 p-4"
+                      className="rounded-lg border border-slate-700 bg-slate-950/60 p-4"
                       key={`${match.round_number}-${match.table_number}-${match.player_one_name}-${match.player_two_name || "bye"}`}
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div>
-                          <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Round</p>
-                          <p className="text-2xl font-bold leading-none text-gray-950">{match.round_number}</p>
+                          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Round</p>
+                          <p className="text-2xl font-bold leading-none text-slate-50">{match.round_number}</p>
                         </div>
                         <div className="text-right">
-                          <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Table</p>
-                          <p className="text-2xl font-bold leading-none text-gray-950">{match.table_number || "-"}</p>
+                          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Table</p>
+                          <p className="text-2xl font-bold leading-none text-slate-50">{match.table_number || "-"}</p>
                         </div>
                       </div>
 
-                      <span className={`mt-3 inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${statusBadge.className}`}>
+                      <Badge className={`mt-3 ${statusBadge.className}`}>
                         {statusBadge.label}
-                      </span>
+                      </Badge>
 
-                      <p className="mt-4 text-sm font-medium text-gray-600">
+                      <p className="mt-4 text-sm font-medium text-slate-300">
                         {match.notes === "BYE" ? `${playerOneName} has a BYE` : `${playerOneName} vs ${playerTwoName}`}
                       </p>
-                      <p className="mt-2 text-base font-semibold text-gray-950">{getWinnerDisplay(match)}</p>
+                      <p className="mt-2 text-base font-semibold text-slate-50">{getWinnerDisplay(match)}</p>
                     </li>
                   );
                 })}
@@ -278,12 +270,12 @@ export default function PublicTournamentPage() {
         ) : null}
 
         {activeTab === "pairings" && !normalizedPlayerSearch && currentRound ? (
-          <section className="mt-4 rounded-lg border border-gray-300 bg-white p-4">
+          <section className="mt-4 rounded-lg border border-slate-700 bg-slate-900/55 p-4">
             <div className="flex flex-wrap items-center gap-2">
-              <h3 className="text-xl font-semibold text-gray-950">Round {currentRound.number} - Current Round</h3>
+              <h3 className="text-xl font-semibold text-slate-50">Round {currentRound.number} - Current Round</h3>
             </div>
 
-            {currentRoundMatches.length === 0 ? <p className="mt-3 text-sm text-gray-700">No matches for the current round.</p> : null}
+            {currentRoundMatches.length === 0 ? <p className="mt-3 text-sm text-slate-400">No matches for the current round.</p> : null}
 
             {currentRoundMatches.length > 0 ? (
               <ul className="mt-4 grid gap-3 sm:grid-cols-2">
@@ -296,29 +288,27 @@ export default function PublicTournamentPage() {
 
                   return (
                     <li
-                      className="rounded-lg border border-gray-200 bg-gray-50 p-4"
+                      className="rounded-lg border border-slate-700 bg-slate-950/60 p-4"
                       key={`${currentRound.number}-${match.table_number}-${match.player_one_name}`}
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div>
-                          <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Table</p>
-                          <p className="text-4xl font-bold leading-none text-gray-950">{match.table_number || "-"}</p>
+                          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Table</p>
+                          <p className="text-4xl font-bold leading-none text-slate-50">{match.table_number || "-"}</p>
                         </div>
-                        <span
-                          className={`rounded-full px-2.5 py-1 text-xs font-semibold ${statusBadge.className}`}
-                        >
+                        <Badge className={statusBadge.className}>
                           {statusBadge.label}
-                        </span>
+                        </Badge>
                       </div>
 
                       {match.notes === "BYE" ? (
-                        <p className="mt-4 text-sm font-medium text-gray-600">{playerOneName} has a BYE</p>
+                        <p className="mt-4 text-sm font-medium text-slate-300">{playerOneName} has a BYE</p>
                       ) : (
-                        <p className="mt-4 text-sm font-medium text-gray-600">
+                        <p className="mt-4 text-sm font-medium text-slate-300">
                           {playerOneName} vs {playerTwoName}
                         </p>
                       )}
-                      <p className="mt-2 text-base font-semibold text-gray-950">
+                      <p className="mt-2 text-base font-semibold text-slate-50">
                         {getResultDisplay(match)}
                       </p>
                     </li>
@@ -330,13 +320,13 @@ export default function PublicTournamentPage() {
         ) : null}
 
         {activeTab === "standings" && !isLoading && standings.length === 0 ? (
-          <p className="mt-4 text-gray-700">No standings imported yet.</p>
+          <p className="mt-4 text-slate-400">No standings imported yet.</p>
         ) : null}
 
         {activeTab === "standings" && standings.length > 0 ? (
           <>
-            <input
-              className="mt-4 w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-950 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
+            <Input
+              className="mt-4"
               onChange={(event) => setStandingsSearch(event.target.value)}
               placeholder="Search player in standings..."
               type="search"
@@ -344,34 +334,35 @@ export default function PublicTournamentPage() {
             />
 
             {filteredStandings.length === 0 ? (
-              <p className="mt-4 text-sm text-gray-700">No standing found for '{standingsSearch.trim()}'.</p>
+              <p className="mt-4 text-sm text-slate-400">No standing found for '{standingsSearch.trim()}'.</p>
             ) : (
-              <div className="mt-4 overflow-x-auto">
-                <table className="min-w-full text-left text-sm">
-                  <thead className="border-b border-gray-200 text-xs font-semibold uppercase tracking-wide text-gray-500">
-                    <tr>
-                      <th className="whitespace-nowrap px-3 py-2">Rank</th>
-                      <th className="min-w-48 px-3 py-2">Player</th>
-                      <th className="whitespace-nowrap px-3 py-2">Points</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-200">
+              <div className="mt-4">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="whitespace-nowrap">Rank</TableHead>
+                      <TableHead className="min-w-48">Player</TableHead>
+                      <TableHead className="whitespace-nowrap">Points</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
                     {filteredStandings.map((standing) => (
-                      <tr key={standing.id}>
-                        <td className="whitespace-nowrap px-3 py-3 font-semibold text-gray-950">{standing.rank}</td>
-                        <td className="px-3 py-3 font-medium text-gray-950">
+                      <TableRow key={standing.id}>
+                        <TableCell className="whitespace-nowrap font-semibold text-slate-50">{standing.rank}</TableCell>
+                        <TableCell className="font-medium text-slate-50">
                           {formatPlayerDisplayName(standing.short_name || standing.full_name)}
-                        </td>
-                        <td className="whitespace-nowrap px-3 py-3 text-gray-700">{standing.points}</td>
-                      </tr>
+                        </TableCell>
+                        <TableCell className="whitespace-nowrap text-slate-300">{standing.points}</TableCell>
+                      </TableRow>
                     ))}
-                  </tbody>
-                </table>
+                  </TableBody>
+                </Table>
               </div>
             )}
           </>
         ) : null}
-      </section>
+        </CardContent>
+      </Card>
     </main>
   );
 }

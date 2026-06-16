@@ -1,7 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { RefreshCw } from "lucide-react";
 
 import api from "../api/client";
+import { Badge } from "../components/ui/badge";
+import { Button } from "../components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
+import { Input } from "../components/ui/input";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
 
 function formatDate(value) {
   if (!value) {
@@ -16,11 +22,11 @@ function formatAverage(value) {
 }
 
 const sortableColumns = [
-  { key: "player", label: "Player", className: "min-w-48 px-3 py-2" },
-  { key: "cossyId", label: "COSSY ID", className: "whitespace-nowrap px-3 py-2" },
-  { key: "tournaments", label: "Tournaments", className: "whitespace-nowrap px-3 py-2" },
-  { key: "points", label: "Points", className: "whitespace-nowrap px-3 py-2" },
-  { key: "bestRank", label: "Best Rank", className: "whitespace-nowrap px-3 py-2" },
+  { key: "player", label: "Player", className: "w-[32%] px-2 py-2" },
+  { key: "cossyId", label: "COSSY ID", className: "w-[16%] px-2 py-2" },
+  { key: "tournaments", label: "Tournaments", className: "w-[16%] px-2 py-2 text-right" },
+  { key: "points", label: "Points", className: "w-[24%] px-2 py-2" },
+  { key: "bestRank", label: "Best Rank", className: "w-[12%] px-2 py-2 text-right" },
 ];
 
 function compareProfiles(profileA, profileB, sortKey) {
@@ -188,131 +194,147 @@ export default function PlayerProfilesPage() {
     <main className="mx-auto flex min-h-screen w-full max-w-6xl flex-col gap-6 px-4 py-8">
       <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <Link className="text-sm font-medium text-blue-700 hover:text-blue-900" to="/admin">
+          <Link className="text-sm font-medium text-sky-300 hover:text-sky-200" to="/admin">
             Back to tournaments
           </Link>
-          <p className="mt-4 text-sm font-medium uppercase tracking-wide text-blue-700">Admin</p>
-          <h1 className="mt-2 text-3xl font-semibold text-gray-950">Community Players</h1>
+          <p className="mt-4 text-sm font-medium uppercase tracking-wide text-sky-300">Admin</p>
+          <h1 className="mt-2 text-3xl font-semibold text-slate-50">Community Players</h1>
         </div>
-        <button className="self-start rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 sm:self-auto" onClick={fetchProfiles} type="button">
+        <Button className="self-start sm:self-auto" onClick={fetchProfiles} type="button" variant="outline">
+          <RefreshCw className="h-4 w-4" />
           Refresh
-        </button>
+        </Button>
       </header>
 
-      {error ? <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">{error}</p> : null}
+      {error ? <p className="rounded-md border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-sm font-medium text-rose-200">{error}</p> : null}
 
-      <section className="grid gap-5 lg:grid-cols-[minmax(0,1.5fr)_minmax(320px,1fr)]">
-        <div className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
-          <h2 className="text-lg font-semibold text-gray-950">Players</h2>
-          <input
-            className="mt-4 w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-950 placeholder:text-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+      <section className="grid gap-6 lg:grid-cols-[minmax(0,1.65fr)_minmax(280px,0.85fr)]">
+        <Card className="min-w-0 border-slate-700/70 bg-slate-950/85">
+          <CardHeader>
+            <CardTitle>Players</CardTitle>
+            <CardDescription>{profiles.length} community profile{profiles.length === 1 ? "" : "s"}</CardDescription>
+          </CardHeader>
+          <CardContent>
+          <Input
             onChange={(event) => setSearchTerm(event.target.value)}
             placeholder="Search players..."
             type="search"
             value={searchTerm}
           />
 
-          {isLoading ? <p className="mt-4 text-gray-700">Loading players...</p> : null}
-          {!isLoading && profiles.length === 0 ? <p className="mt-4 text-gray-700">No player profiles yet.</p> : null}
-          {!isLoading && profiles.length > 0 && visibleProfiles.length === 0 ? <p className="mt-4 text-gray-700">No players match your search.</p> : null}
+          {isLoading ? <p className="mt-4 text-slate-400">Loading players...</p> : null}
+          {!isLoading && profiles.length === 0 ? <p className="mt-4 text-slate-400">No player profiles yet.</p> : null}
+          {!isLoading && profiles.length > 0 && visibleProfiles.length === 0 ? <p className="mt-4 text-slate-400">No players match your search.</p> : null}
 
           {profiles.length > 0 ? (
-            <div className="mt-4 overflow-x-auto">
-              <table className="min-w-full text-left text-sm">
-                <thead className="border-b border-gray-200 text-xs font-semibold uppercase tracking-wide text-gray-500">
-                  <tr>
+            <div className="mt-4">
+              <Table className="table-fixed">
+                <TableHeader>
+                  <TableRow>
                     {sortableColumns.map((column) => (
-                      <th className={column.className} key={column.key}>
+                      <TableHead className={column.className} key={column.key}>
                         <button
-                          className="flex items-center gap-1 font-semibold uppercase tracking-wide text-gray-500 hover:text-gray-900"
+                          className={`flex min-w-0 items-center gap-1 font-semibold uppercase tracking-wide text-slate-400 hover:text-slate-100 ${
+                            column.key === "tournaments" || column.key === "bestRank" ? "ml-auto justify-end" : ""
+                          }`}
                           onClick={() => updateSort(column.key)}
                           type="button"
                         >
-                          <span>{column.label}</span>
+                          <span className="truncate">{column.label}</span>
                           {sortConfig.key === column.key ? <span>{sortConfig.direction === "asc" ? "\u2191" : "\u2193"}</span> : null}
                         </button>
-                      </th>
+                      </TableHead>
                     ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200">
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
                   {visibleProfiles.map((profile) => {
                     const isSelected = profile.id === selectedProfileId;
 
                     return (
-                      <tr
-                        className={isSelected ? "bg-blue-50" : "hover:bg-gray-50"}
+                      <TableRow
+                        className={isSelected ? "bg-sky-500/10" : ""}
                         key={profile.id}
                       >
-                        <td className="px-3 py-3">
+                        <TableCell className="max-w-0 px-2">
                           <button
-                            className="text-left font-semibold text-blue-700 hover:text-blue-900"
+                            className="block max-w-full truncate text-left font-semibold text-sky-300 hover:text-sky-200"
                             onClick={() => setSelectedProfileId(profile.id)}
+                            title={profile.display_name}
                             type="button"
                           >
                             {profile.display_name}
                           </button>
-                        </td>
-                        <td className="whitespace-nowrap px-3 py-3 text-gray-700">{profile.cossy_id || "-"}</td>
-                        <td className="whitespace-nowrap px-3 py-3 text-gray-700">{profile.tournaments_played}</td>
-                        <td className="whitespace-nowrap px-3 py-3 text-gray-700">
+                        </TableCell>
+                        <TableCell className="max-w-0 truncate px-2 text-slate-300" title={profile.cossy_id || "-"}>
+                          {profile.cossy_id || "-"}
+                        </TableCell>
+                        <TableCell className="whitespace-nowrap px-2 text-right text-slate-300">{profile.tournaments_played}</TableCell>
+                        <TableCell
+                          className="max-w-0 truncate px-2 text-slate-300"
+                          title={`${profile.total_points} (${formatAverage(profile.average_points)} avg)`}
+                        >
                           {profile.total_points} ({formatAverage(profile.average_points)} avg)
-                        </td>
-                        <td className="whitespace-nowrap px-3 py-3 text-gray-700">{profile.best_rank || "-"}</td>
-                      </tr>
+                        </TableCell>
+                        <TableCell className="whitespace-nowrap px-2 text-right text-slate-300">{profile.best_rank || "-"}</TableCell>
+                      </TableRow>
                     );
                   })}
-                </tbody>
-              </table>
+                </TableBody>
+              </Table>
             </div>
           ) : null}
-        </div>
+          </CardContent>
+        </Card>
 
-        <aside className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
-          <h2 className="text-lg font-semibold text-gray-950">Player History</h2>
+        <Card className="min-w-0 border-slate-700/70 bg-slate-950/85">
+          <CardHeader>
+            <CardTitle>Player History</CardTitle>
+          </CardHeader>
+          <CardContent>
 
-          {!selectedProfileId ? <p className="mt-4 text-sm text-gray-700">Select a player.</p> : null}
-          {isLoadingDetail ? <p className="mt-4 text-sm text-gray-700">Loading history...</p> : null}
+          {!selectedProfileId ? <p className="text-sm text-slate-400">Select a player.</p> : null}
+          {isLoadingDetail ? <p className="text-sm text-slate-400">Loading history...</p> : null}
 
           {selectedSummary && selectedProfile ? (
-            <div className="mt-4">
-              <h3 className="text-xl font-semibold text-gray-950">{selectedProfile.profile.display_name}</h3>
+            <div>
+              <h3 className="text-xl font-semibold text-slate-50">{selectedProfile.profile.display_name}</h3>
               <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
                 <div>
-                  <dt className="font-semibold text-gray-950">COSSY ID</dt>
-                  <dd className="text-gray-700">{selectedProfile.profile.cossy_id || "-"}</dd>
+                  <dt className="font-semibold text-slate-50">COSSY ID</dt>
+                  <dd className="text-slate-300">{selectedProfile.profile.cossy_id || "-"}</dd>
                 </div>
                 <div>
-                  <dt className="font-semibold text-gray-950">Last Played</dt>
-                  <dd className="text-gray-700">{formatDate(selectedProfile.last_tournament_date)}</dd>
+                  <dt className="font-semibold text-slate-50">Last Played</dt>
+                  <dd className="text-slate-300">{formatDate(selectedProfile.last_tournament_date)}</dd>
                 </div>
                 <div>
-                  <dt className="font-semibold text-gray-950">Tournaments</dt>
-                  <dd className="text-gray-700">{selectedProfile.tournaments_played}</dd>
+                  <dt className="font-semibold text-slate-50">Tournaments</dt>
+                  <dd className="text-slate-300">{selectedProfile.tournaments_played}</dd>
                 </div>
                 <div>
-                  <dt className="font-semibold text-gray-950">Total Points</dt>
-                  <dd className="text-gray-700">{selectedProfile.total_points}</dd>
+                  <dt className="font-semibold text-slate-50">Total Points</dt>
+                  <dd className="text-slate-300">{selectedProfile.total_points}</dd>
                 </div>
               </dl>
 
               {sortedTournamentHistory.length > 0 ? (
-                <ul className="mt-5 divide-y divide-gray-200">
+                <ul className="mt-5 divide-y divide-slate-800">
                   {sortedTournamentHistory.map((historyRow) => (
                     <li className="py-3 text-sm" key={`${historyRow.tournament_id}-${historyRow.rank}`}>
-                      <p className="font-semibold text-gray-950">{historyRow.tournament_name}</p>
-                      <p className="mt-1 text-gray-700">{formatDate(historyRow.tournament_date)}</p>
-                      <dl className="mt-2 grid grid-cols-1 gap-1 text-gray-700 sm:grid-cols-3">
+                      <p className="font-semibold text-slate-50">{historyRow.tournament_name}</p>
+                      <p className="mt-1 text-slate-400">{formatDate(historyRow.tournament_date)}</p>
+                      <dl className="mt-2 grid grid-cols-1 gap-1 text-slate-300 sm:grid-cols-3">
                         <div>
-                          <dt className="font-medium text-gray-950">Rank</dt>
-                          <dd>{historyRow.rank}</dd>
+                          <dt className="font-medium text-slate-50">Rank</dt>
+                          <dd><Badge variant="secondary">{historyRow.rank}</Badge></dd>
                         </div>
                         <div>
-                          <dt className="font-medium text-gray-950">Points</dt>
+                          <dt className="font-medium text-slate-50">Points</dt>
                           <dd>{historyRow.points}</dd>
                         </div>
                         <div>
-                          <dt className="font-medium text-gray-950">Tiebreaker</dt>
+                          <dt className="font-medium text-slate-50">Tiebreaker</dt>
                           <dd>{historyRow.tiebreaker || "-"}</dd>
                         </div>
                       </dl>
@@ -320,11 +342,12 @@ export default function PlayerProfilesPage() {
                   ))}
                 </ul>
               ) : (
-                <p className="mt-5 text-sm text-gray-700">No standings history yet.</p>
+                <p className="mt-5 text-sm text-slate-400">No standings history yet.</p>
               )}
             </div>
           ) : null}
-        </aside>
+          </CardContent>
+        </Card>
       </section>
     </main>
   );

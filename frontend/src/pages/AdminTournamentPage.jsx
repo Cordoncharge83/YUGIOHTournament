@@ -3,6 +3,12 @@ import { QRCodeSVG } from "qrcode.react";
 import { Link, useParams } from "react-router-dom";
 
 import api from "../api/client";
+import { Badge } from "../components/ui/badge";
+import { Button } from "../components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
+import { Input } from "../components/ui/input";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
+import { Tabs, TabsList, TabsTrigger } from "../components/ui/tabs";
 
 const RESULT_OPTIONS = [
   { value: "PLAYER_ONE_WIN", label: "P1 wins" },
@@ -697,6 +703,8 @@ export default function AdminTournamentPage() {
   const savedKtsFileName = savedKtsFilePath ? savedKtsFilePath.split(/[\\/]/).filter(Boolean).pop() : null;
   const watchedFileName = activeWatcherForCurrentTournament ? autoSyncStatus?.file_name : null;
   const watchedFilePath = activeWatcherForCurrentTournament ? autoSyncStatus?.file_path : null;
+  const currentKtsFilePath = watchedFilePath || savedKtsFilePath;
+  const currentKtsFileName = watchedFileName || savedKtsFileName;
   const autoSyncTargetLabel = autoSyncStatus?.tournament_id
     ? `${autoSyncStatus.tournament_name || "Tournament"} #${autoSyncStatus.tournament_id}`
     : null;
@@ -709,6 +717,16 @@ export default function AdminTournamentPage() {
     : savedKtsFilePath
       ? "Saved, not watching"
       : "Disabled";
+  const autoSyncBadgeLabel = activeWatcherForCurrentTournament
+    ? "Watching"
+    : savedKtsFilePath
+      ? "Not Watching"
+      : "Disabled";
+  const autoSyncBadgeClass = activeWatcherForCurrentTournament
+    ? "border-emerald-400/50 bg-emerald-500/15 text-emerald-200"
+    : savedKtsFilePath
+      ? "border-amber-400/35 bg-amber-400/10 text-amber-200"
+      : "border-gray-500/50 bg-gray-500/15 text-gray-300";
 
   useEffect(() => {
     if (rounds.length === 0) {
@@ -844,27 +862,149 @@ export default function AdminTournamentPage() {
         </div>
       </section>
 
-      <section className="rounded-lg border border-yellow-700/40 bg-yellow-950/10 p-5 shadow-sm">
-        <div>
-          <p className="text-sm font-medium uppercase tracking-wide text-blue-700">KTS integration</p>
-          <h2 className="mt-1 text-xl font-semibold text-gray-950">KTS Tournament File</h2>
-          <p className="mt-2 text-sm text-gray-700">
-            {isRunningInTauri
-              ? "Choose the original KTS .Tournament file to import it now and keep it watched during the event."
-              : "Use a KTS .Tournament file either as a one-time upload or as a watched live-event source."}
-          </p>
+      <section className="rounded-lg border border-slate-700/70 bg-slate-950/85 p-5 shadow-sm">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-amber-300">KTS integration</p>
+            <h2 className="mt-1 text-xl font-semibold text-slate-50">KTS Tournament File</h2>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-400">
+              {isRunningInTauri
+                ? "Choose the original KTS .Tournament file to import it now and keep it watched during the event."
+                : "Use a KTS .Tournament file either as a one-time upload or as a watched live-event source."}
+            </p>
+          </div>
+          <button
+            className="w-fit rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm font-medium text-slate-200 hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+            disabled={isRefreshingAutoSyncStatus}
+            onClick={handleRefreshAutoSyncStatus}
+            type="button"
+          >
+            {isRefreshingAutoSyncStatus ? "Refreshing..." : "Refresh Status"}
+          </button>
         </div>
 
-        <div className={`mt-5 grid gap-4 ${isRunningInTauri ? "" : "lg:grid-cols-2"}`}>
-          {!isRunningInTauri ? (
-          <section className="rounded-lg border border-blue-200 bg-white p-4 shadow-sm">
-            <h3 className="text-base font-semibold text-gray-950">Manual Import</h3>
-            <p className="mt-1 text-sm text-gray-700">
-              Upload a .Tournament file once. Use this if you only need a one-time update.
+        {autoSyncTargetsAnotherTournament ? (
+          <p className="mt-4 rounded-md border border-amber-400/25 bg-amber-400/10 px-3 py-2 text-xs font-medium text-amber-100">
+            Auto-sync is currently targeting {autoSyncTargetLabel}.
+          </p>
+        ) : null}
+
+        <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-slate-800 pt-4">
+          <Badge className={autoSyncBadgeClass}>{autoSyncBadgeLabel}</Badge>
+          <span className="text-sm text-slate-400">Last sync: {lastSyncTime || "-"}</span>
+          <span className="text-sm text-slate-300">{autoSyncStateLabel}</span>
+        </div>
+
+        <div className="mt-4">
+          <p className="text-xs font-semibold uppercase tracking-wide text-amber-300">Current KTS file</p>
+          <p className="mt-2 text-base font-semibold text-slate-50">{currentKtsFileName || "No KTS file selected"}</p>
+          {currentKtsFilePath ? <p className="mt-1 break-all text-xs leading-5 text-slate-400">{currentKtsFilePath}</p> : null}
+        </div>
+
+        {isRunningInTauri ? (
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            <Button
+              disabled={isChoosingAutoSyncFile || isResumingAutoSync || isEnablingAutoSync || isRunningAutoSync}
+              onClick={handleChooseAutoSyncFile}
+              type="button"
+              variant={savedKtsFilePath ? "outline" : "default"}
+            >
+              {isChoosingAutoSyncFile ? "Choosing..." : savedKtsFilePath ? "Choose Different File" : "Choose KTS File"}
+            </Button>
+            {savedKtsFilePath && !activeWatcherForCurrentTournament ? (
+              <Button
+                disabled={isResumingAutoSync || isChoosingAutoSyncFile || isEnablingAutoSync || isRunningAutoSync}
+                onClick={handleResumeAutoSync}
+                type="button"
+              >
+                {isResumingAutoSync ? "Resuming..." : "Resume Watching"}
+              </Button>
+            ) : null}
+            <Button
+              disabled={!activeWatcherForCurrentTournament || isRunningAutoSync || isChoosingAutoSyncFile || isResumingAutoSync}
+              onClick={handleRunAutoSyncNow}
+              type="button"
+              variant="secondary"
+            >
+              {isRunningAutoSync ? "Syncing..." : "Sync Now"}
+            </Button>
+            <Button
+              disabled={!autoSyncStatus?.enabled || isDisablingAutoSync}
+              onClick={handleDisableAutoSync}
+              type="button"
+              variant="destructive"
+            >
+              {isDisablingAutoSync ? "Disabling..." : "Disable Auto-Sync"}
+            </Button>
+          </div>
+        ) : (
+          <form className="mt-4 grid gap-3 md:grid-cols-[1fr_auto_auto_auto]" onSubmit={handleEnableAutoSync}>
+            <label className="flex flex-col gap-1 text-sm font-medium text-slate-300">
+              .Tournament file path
+              <Input
+                onChange={(event) => {
+                  setAutoSyncFilePath(event.target.value);
+                  setAutoSyncMessage("");
+                  setAutoSyncError("");
+                }}
+                placeholder="C:\Users\...\Competitive Tournament (ID ...).Tournament"
+                type="text"
+                value={autoSyncFilePath}
+              />
+              <span className="text-xs text-slate-400">
+                Browser mode cannot read real local paths, so paste the full path for auto-sync.
+              </span>
+            </label>
+            <Button
+              className="self-end"
+              disabled={isEnablingAutoSync || isChoosingAutoSyncFile}
+              type="submit"
+            >
+              {isEnablingAutoSync ? "Enabling..." : "Enable Auto-Sync"}
+            </Button>
+            <Button
+              className="self-end"
+              disabled={!activeWatcherForCurrentTournament || isRunningAutoSync || isChoosingAutoSyncFile || isResumingAutoSync}
+              onClick={handleRunAutoSyncNow}
+              type="button"
+              variant="secondary"
+            >
+              {isRunningAutoSync ? "Syncing..." : "Sync Now"}
+            </Button>
+            <Button
+              className="self-end"
+              disabled={!autoSyncStatus?.enabled || isDisablingAutoSync}
+              onClick={handleDisableAutoSync}
+              type="button"
+              variant="destructive"
+            >
+              {isDisablingAutoSync ? "Disabling..." : "Disable Auto-Sync"}
+            </Button>
+          </form>
+        )}
+
+        {autoSyncStatus?.last_status ? (
+          <p className="mt-3 text-sm text-slate-300">
+            <span className="font-medium text-slate-200">Last sync result:</span> {autoSyncStatus.last_status}
+          </p>
+        ) : null}
+        {autoSyncMessage ? <p className="mt-3 text-sm font-medium text-emerald-200">{autoSyncMessage}</p> : null}
+        {autoSyncError ? <p className="mt-3 rounded-md border border-red-400/30 bg-red-500/10 px-3 py-2 text-sm font-medium text-red-200">{autoSyncError}</p> : null}
+        {autoSyncStatus?.last_error ? (
+          <p className="mt-3 rounded-md border border-red-400/30 bg-red-500/10 px-3 py-2 text-sm font-semibold text-red-200">
+            {autoSyncStatus.last_error}
+          </p>
+        ) : null}
+
+        {!isRunningInTauri ? (
+          <div className="mt-5 border-t border-slate-800 pt-4">
+            <h3 className="text-sm font-semibold text-slate-50">Manual one-time import</h3>
+            <p className="mt-1 text-sm text-slate-400">
+              Upload a .Tournament file once if you do not need live auto-sync.
             </p>
 
-            <form className="mt-4 grid gap-3 md:grid-cols-[1fr_auto]" onSubmit={handleImportTournamentFile}>
-              <label className="flex flex-col gap-1 text-sm font-medium text-gray-700">
+            <form className="mt-3 grid gap-3 md:grid-cols-[1fr_auto]" onSubmit={handleImportTournamentFile}>
+              <label className="flex flex-col gap-1 text-sm font-medium text-slate-300">
                 .Tournament or XML file
                 <input
                   accept=".Tournament,.tournament,.xml,application/xml,text/xml"
@@ -890,250 +1030,87 @@ export default function AdminTournamentPage() {
 
             {tournamentFileImportMessage ? <p className="mt-3 text-sm font-medium text-green-700">{tournamentFileImportMessage}</p> : null}
             {tournamentFileImportError ? <p className="mt-3 text-sm font-medium text-red-700">{tournamentFileImportError}</p> : null}
-          </section>
-          ) : null}
-
-          <section className="rounded-lg border border-yellow-700/40 bg-yellow-50/30 p-4 shadow-sm">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <h3 className="text-base font-semibold text-gray-950">
-                  {isRunningInTauri ? "Live KTS File" : "Auto-Sync"}
-                </h3>
-                <p className="mt-1 text-sm text-gray-700">
-                  {isRunningInTauri
-                    ? "Select the real KTS file path, import it immediately, and watch future KTS saves."
-                    : "Watch the original KTS file on this computer and automatically import changes during a live event."}
-                </p>
-                {!isRunningInTauri ? (
-                  <p className="mt-2 text-xs font-medium text-gray-500">
-                    Browser mode cannot read real local file paths, so paste the full path for auto-sync.
-                  </p>
-                ) : null}
-                <p className="mt-2 text-sm font-semibold text-gray-700">
-                  Status: {autoSyncStateLabel}
-                </p>
-              </div>
-              <button
-                className="w-fit rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
-                disabled={isRefreshingAutoSyncStatus}
-                onClick={handleRefreshAutoSyncStatus}
-                type="button"
-              >
-                {isRefreshingAutoSyncStatus ? "Refreshing..." : "Refresh Status"}
-              </button>
-            </div>
-
-            {autoSyncTargetsAnotherTournament ? (
-              <p className="mt-3 rounded-md border border-yellow-500/50 bg-yellow-100/60 px-3 py-2 text-sm font-semibold text-yellow-700">
-                Auto-sync is currently targeting {autoSyncTargetLabel}.
-              </p>
-            ) : null}
-
-            {isRunningInTauri ? (
-              <div className="mt-4 rounded-md border border-yellow-700/30 bg-yellow-100/40 p-4">
-                <p className="text-xs font-semibold uppercase tracking-wide text-yellow-800">Desktop KTS file</p>
-                <div className="mt-3 flex flex-wrap items-center gap-2">
-                  {savedKtsFilePath && !activeWatcherForCurrentTournament ? (
-                    <button
-                      className="rounded-md bg-yellow-700 px-4 py-2 text-sm font-medium text-white hover:bg-yellow-800 disabled:cursor-not-allowed disabled:bg-gray-400"
-                      disabled={isResumingAutoSync || isChoosingAutoSyncFile || isEnablingAutoSync || isRunningAutoSync}
-                      onClick={handleResumeAutoSync}
-                      type="button"
-                    >
-                      {isResumingAutoSync ? "Resuming..." : "Resume Watching"}
-                    </button>
-                  ) : null}
-                  <button
-                    className={`rounded-md px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:bg-gray-400 ${
-                      savedKtsFilePath
-                        ? "border border-yellow-700 bg-white text-yellow-800 hover:bg-yellow-50"
-                        : "bg-yellow-700 text-white hover:bg-yellow-800"
-                    }`}
-                    disabled={isChoosingAutoSyncFile || isResumingAutoSync || isEnablingAutoSync || isRunningAutoSync}
-                    onClick={handleChooseAutoSyncFile}
-                    type="button"
-                  >
-                    {isChoosingAutoSyncFile ? "Choosing..." : savedKtsFilePath ? "Choose Different File" : "Choose KTS File"}
-                  </button>
-                  <span className="text-xs font-medium text-gray-600">
-                    {savedKtsFilePath
-                      ? "Saved paths are tournament-specific. Resume or replace this tournament's file."
-                      : "Selects, imports, saves, and starts watching this tournament's KTS file."}
-                  </span>
-                </div>
-              </div>
-            ) : (
-              <form className="mt-4 grid gap-3" onSubmit={handleEnableAutoSync}>
-                <label className="flex flex-col gap-1 text-sm font-medium text-gray-700">
-                  .Tournament file path
-                  <input
-                    className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-950 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
-                    onChange={(event) => {
-                      setAutoSyncFilePath(event.target.value);
-                      setAutoSyncMessage("");
-                      setAutoSyncError("");
-                    }}
-                    placeholder="C:\Users\...\Competitive Tournament (ID ...).Tournament"
-                    type="text"
-                    value={autoSyncFilePath}
-                  />
-                </label>
-                <button
-                  className="w-fit rounded-md bg-blue-700 px-4 py-2 text-sm font-medium text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:bg-gray-400"
-                  disabled={isEnablingAutoSync || isChoosingAutoSyncFile}
-                  type="submit"
-                >
-                  {isEnablingAutoSync ? "Enabling..." : "Enable Auto-Sync"}
-                </button>
-              </form>
-            )}
-
-            <div className="mt-4 flex flex-wrap gap-2">
-                <button
-                  className="rounded-md bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-gray-700 disabled:cursor-not-allowed disabled:bg-gray-400"
-                  disabled={!activeWatcherForCurrentTournament || isRunningAutoSync || isChoosingAutoSyncFile || isResumingAutoSync}
-                  onClick={handleRunAutoSyncNow}
-                  type="button"
-                >
-                  {isRunningAutoSync ? "Syncing..." : "Sync Now"}
-                </button>
-                <button
-                  className="rounded-md border border-red-200 bg-white px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
-                  disabled={!autoSyncStatus?.enabled || isDisablingAutoSync}
-                  onClick={handleDisableAutoSync}
-                  type="button"
-                >
-                  {isDisablingAutoSync ? "Disabling..." : "Disable Auto-Sync"}
-                </button>
-            </div>
-
-            <div className="mt-4 grid gap-3 text-sm text-gray-700 sm:grid-cols-2">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Saved file for this tournament</p>
-                <p className="mt-1 font-medium text-gray-950">{savedKtsFileName || "Not configured"}</p>
-                {savedKtsFilePath ? <p className="mt-1 break-all text-xs text-gray-500">{savedKtsFilePath}</p> : null}
-              </div>
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Active watched file</p>
-                <p className="mt-1 font-medium text-gray-950">{watchedFileName || "Not watching this tournament"}</p>
-                {watchedFilePath ? <p className="mt-1 break-all text-xs text-gray-500">{watchedFilePath}</p> : null}
-              </div>
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Target tournament</p>
-                <p className="mt-1 font-medium text-gray-950">{autoSyncTargetLabel || `${tournament?.name || "This tournament"} #${id}`}</p>
-              </div>
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Last sync</p>
-                <p className="mt-1 font-medium text-gray-950">{lastSyncTime || "-"}</p>
-              </div>
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Status</p>
-                <p className="mt-1 font-medium text-gray-950">{autoSyncStatus?.last_status || "-"}</p>
-              </div>
-            </div>
-            {autoSyncMessage ? <p className="mt-3 text-sm font-medium text-green-700">{autoSyncMessage}</p> : null}
-            {autoSyncError ? <p className="mt-3 text-sm font-medium text-red-700">{autoSyncError}</p> : null}
-            {autoSyncStatus?.last_error ? (
-              <p className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">
-                {autoSyncStatus.last_error}
-              </p>
-            ) : null}
-          </section>
-        </div>
+          </div>
+        ) : null}
       </section>
 
-      <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
-        <div className="flex overflow-x-auto overflow-y-hidden border-b border-gray-200">
-          <button
-            className={`shrink-0 border-b-2 px-4 py-2 text-sm font-semibold ${
-              activeTournamentTab === "matches"
-                ? "border-blue-700 text-blue-700"
-                : "border-transparent text-gray-500 hover:text-gray-800"
-            }`}
-            onClick={() => setActiveTournamentTab("matches")}
-            type="button"
-          >
-            Current Round / Matches
-          </button>
-          <button
-            className={`shrink-0 border-b-2 px-4 py-2 text-sm font-semibold ${
-              activeTournamentTab === "standings"
-                ? "border-blue-700 text-blue-700"
-                : "border-transparent text-gray-500 hover:text-gray-800"
-            }`}
-            onClick={() => setActiveTournamentTab("standings")}
-            type="button"
-          >
-            Standings
-          </button>
-        </div>
-      </section>
+      <Card className="border-slate-700/70 bg-slate-950/85">
+        <CardContent className="p-4">
+          <Tabs onValueChange={setActiveTournamentTab} value={activeTournamentTab}>
+            <TabsList>
+              <TabsTrigger value="matches">Current Round / Matches</TabsTrigger>
+              <TabsTrigger value="standings">Standings</TabsTrigger>
+            </TabsList>
+          </Tabs>
+        </CardContent>
+      </Card>
 
       {activeTournamentTab === "standings" ? (
-      <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <Card className="border-slate-700/70 bg-slate-950/85">
+        <CardHeader className="flex-row items-center justify-between gap-4 space-y-0">
           <div>
-            <h2 className="text-xl font-semibold text-gray-950">Standings</h2>
-            <p className="mt-1 text-sm text-gray-700">{standings.length} players imported</p>
+            <CardTitle>Standings</CardTitle>
+            <CardDescription>{standings.length} players imported</CardDescription>
           </div>
-          <button className="text-sm font-medium text-blue-700 hover:text-blue-900" onClick={fetchStandings} type="button">
+          <Button onClick={fetchStandings} size="sm" type="button" variant="ghost">
             Refresh
-          </button>
-        </div>
+          </Button>
+        </CardHeader>
+        <CardContent>
 
-        <input
-          className="mt-4 w-full rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-950 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
+        <Input
           onChange={(event) => setStandingsSearch(event.target.value)}
           placeholder="Search standings..."
           type="search"
           value={standingsSearch}
         />
 
-        {standings.length === 0 ? <p className="mt-4 text-sm text-gray-700">No standings imported yet.</p> : null}
+        {standings.length === 0 ? <p className="mt-4 text-sm text-slate-400">No standings imported yet.</p> : null}
         {standings.length > 0 && filteredStandings.length === 0 ? (
-          <p className="mt-4 text-sm text-gray-700">No standings match "{standingsSearch.trim()}".</p>
+          <p className="mt-4 text-sm text-slate-400">No standings match "{standingsSearch.trim()}".</p>
         ) : null}
 
         {filteredStandings.length > 0 ? (
-          <div className="mt-4 overflow-x-auto">
-            <table className="min-w-full text-left text-sm">
-              <thead className="border-b border-gray-200 text-xs font-semibold uppercase tracking-wide text-gray-500">
-                <tr>
-                  <th className="whitespace-nowrap px-3 py-2">Rank</th>
-                  <th className="min-w-48 px-3 py-2">Player</th>
-                  <th className="whitespace-nowrap px-3 py-2">COSSY ID</th>
-                  <th className="whitespace-nowrap px-3 py-2">Points</th>
-                  <th className="whitespace-nowrap px-3 py-2">Tiebreaker</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200">
+          <div className="mt-4">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="whitespace-nowrap">Rank</TableHead>
+                  <TableHead className="min-w-48">Player</TableHead>
+                  <TableHead className="whitespace-nowrap">COSSY ID</TableHead>
+                  <TableHead className="whitespace-nowrap">Points</TableHead>
+                  <TableHead className="whitespace-nowrap">Tiebreaker</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {filteredStandings.map((standing) => (
-                  <tr key={standing.id}>
-                    <td className="whitespace-nowrap px-3 py-3 font-semibold text-gray-950">{standing.rank}</td>
-                    <td className="px-3 py-3 font-medium text-gray-950">
+                  <TableRow key={standing.id}>
+                    <TableCell className="whitespace-nowrap font-semibold text-slate-50">{standing.rank}</TableCell>
+                    <TableCell className="font-medium text-slate-50">
                       {formatPlayerDisplayName(standing.short_name || standing.full_name)}
-                    </td>
-                    <td className="whitespace-nowrap px-3 py-3 text-gray-700">{standing.cossy_id || "-"}</td>
-                    <td className="whitespace-nowrap px-3 py-3 text-gray-700">{standing.points}</td>
-                    <td className="whitespace-nowrap px-3 py-3 text-gray-700">{standing.tiebreaker || "-"}</td>
-                  </tr>
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap text-slate-300">{standing.cossy_id || "-"}</TableCell>
+                    <TableCell className="whitespace-nowrap text-slate-300">{standing.points}</TableCell>
+                    <TableCell className="whitespace-nowrap text-slate-300">{standing.tiebreaker || "-"}</TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
         ) : null}
-      </section>
+        </CardContent>
+      </Card>
       ) : null}
 
       {activeTournamentTab === "matches" ? (
       <>
-      <section className="rounded-lg border border-gray-200 bg-gray-50 p-4">
+      <section className="rounded-lg border border-slate-700/70 bg-slate-950/85 p-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h2 className="text-base font-semibold text-gray-950">Tournament Management</h2>
+            <h2 className="text-base font-semibold text-slate-50">Tournament Management</h2>
           </div>
           <button
-            className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
+            className="rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm font-medium text-slate-200 hover:bg-slate-800"
             onClick={() => setIsManualToolsOpen((isOpen) => !isOpen)}
             type="button"
           >
@@ -1143,7 +1120,7 @@ export default function AdminTournamentPage() {
 
         {isManualToolsOpen ? (
           <div className="mt-4 grid items-start gap-4 md:grid-cols-3">
-        <div className="order-3 self-start rounded-lg border border-gray-200 bg-white p-4">
+        <div className="order-3 self-start rounded-lg border border-slate-700/70 bg-slate-900/55 p-4">
           <div className="flex items-center justify-between gap-4">
             <button
               className="text-left text-base font-semibold text-gray-950"
@@ -1181,7 +1158,7 @@ export default function AdminTournamentPage() {
           {!isLoadingRounds && rounds.length === 0 ? <p className="mt-4 text-sm text-gray-700">No rounds yet.</p> : null}
 
           {rounds.length > 0 ? (
-            <ul className="mt-4 divide-y divide-gray-200">
+            <ul className="mt-4 divide-y divide-slate-800">
               {rounds.map((round) => (
                 <li className="flex items-center justify-between gap-3 py-3 text-sm font-medium text-gray-950" key={round.id}>
                   <span>Round {round.number}</span>
@@ -1211,13 +1188,14 @@ export default function AdminTournamentPage() {
             </>
           ) : null}
         </div>
-        <div className="order-1 self-start rounded-lg border border-gray-200 bg-white p-5 shadow-sm md:col-span-3">
+        <Card className="order-1 self-start border-slate-700/70 bg-slate-950/85 md:col-span-3">
+          <CardContent className="p-5">
           <div className="flex items-center justify-between gap-4">
-            <h2 className="text-lg font-semibold text-gray-950">Matches</h2>
+            <h2 className="text-lg font-semibold text-slate-50">Matches</h2>
             <div className="flex items-center gap-3">
-              <button className="text-sm font-medium text-blue-700 hover:text-blue-900" onClick={fetchMatches} type="button">
+              <Button className="px-0" onClick={fetchMatches} size="sm" type="button" variant="ghost">
                 Refresh
-              </button>
+              </Button>
             </div>
           </div>
 
@@ -1241,8 +1219,8 @@ export default function AdminTournamentPage() {
                     <button
                       className={`shrink-0 rounded-t-md border px-3 py-2 text-sm font-semibold ${
                         isActive
-                          ? "border-gray-300 border-b-white bg-white text-gray-950"
-                          : "border-gray-200 bg-gray-50 text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+                          ? "border-sky-400/50 bg-slate-800 text-slate-50"
+                          : "border-slate-700 bg-slate-900/70 text-slate-400 hover:bg-slate-800 hover:text-slate-100"
                       }`}
                       key={round.id}
                       onClick={() => setSelectedMatchRoundId(round.id)}
@@ -1250,7 +1228,7 @@ export default function AdminTournamentPage() {
                     >
                       Round {round.number}
                       {isCurrent ? (
-                        <span className="ml-2 rounded bg-blue-100 px-2 py-0.5 text-[11px] font-semibold text-blue-800">Current</span>
+                        <Badge className="ml-2">Current</Badge>
                       ) : null}
                     </button>
                   );
@@ -1258,14 +1236,14 @@ export default function AdminTournamentPage() {
               </div>
 
               {selectedMatchRound ? (
-                <p className="rounded-b-md border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-700">
+                <p className="rounded-b-md border border-slate-700 bg-slate-900/70 px-3 py-2 text-sm font-semibold text-slate-300">
                   Round {selectedMatchRound.number}{tournament?.current_round_id === selectedMatchRound.id ? " - Current Round" : ""} - {selectedRoundMatches.length} matches - {selectedRoundUnreportedCount} unreported
                 </p>
               ) : null}
             </div>
           ) : null}
 
-          <label className="mt-4 flex w-fit items-center gap-2 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700">
+          <label className="mt-4 flex w-fit items-center gap-2 rounded-md border border-slate-700 bg-slate-900/70 px-3 py-2 text-sm font-medium text-slate-300">
             <input
               checked={showOnlyUnreportedMatches}
               className="h-4 w-4"
@@ -1275,18 +1253,18 @@ export default function AdminTournamentPage() {
             Show only unreported matches
           </label>
 
-          {matchesError ? <p className="mt-3 text-sm font-medium text-red-700">{matchesError}</p> : null}
-          {isLoadingMatches ? <p className="mt-4 text-sm text-gray-700">Loading matches...</p> : null}
-          {!isLoadingMatches && matches.length === 0 ? <p className="mt-4 text-sm text-gray-700">No matches yet.</p> : null}
+          {matchesError ? <p className="mt-3 text-sm font-medium text-rose-300">{matchesError}</p> : null}
+          {isLoadingMatches ? <p className="mt-4 text-sm text-slate-400">Loading matches...</p> : null}
+          {!isLoadingMatches && matches.length === 0 ? <p className="mt-4 text-sm text-slate-400">No matches yet.</p> : null}
           {!isLoadingMatches && matches.length > 0 && selectedMatchRound && selectedRoundMatches.length === 0 ? (
-            <p className="mt-4 text-sm text-gray-700">No matches for this round.</p>
+            <p className="mt-4 text-sm text-slate-400">No matches for this round.</p>
           ) : null}
           {!isLoadingMatches && selectedMatchRound && selectedRoundMatches.length > 0 && showOnlyUnreportedMatches && displayedSelectedRoundMatches.length === 0 ? (
-            <p className="mt-4 text-sm text-gray-700">All matches reported for this round.</p>
+            <p className="mt-4 text-sm text-slate-400">All matches reported for this round.</p>
           ) : null}
 
           {displayedSelectedRoundMatches.length > 0 ? (
-            <ul className="mt-4 divide-y divide-gray-200">
+            <ul className="mt-4 divide-y divide-slate-800">
               {displayedSelectedRoundMatches.map((match) => {
                 const isBye = match.notes === "BYE";
                 const playerOneName = playerDisplayNames[match.player_one_id] || "Player one";
@@ -1294,18 +1272,18 @@ export default function AdminTournamentPage() {
                 return (
                   <li className="grid gap-3 py-4 md:grid-cols-[1fr_auto_auto]" key={match.id}>
                     <div>
-                      <p className="text-sm font-semibold text-gray-950">
+                      <p className="text-sm font-semibold text-slate-50">
                         Round {roundNumbers[match.round_id] || "?"} - Table {match.table_number || "-"}
                       </p>
-                      <p className="mt-1 text-sm text-gray-700">
+                      <p className="mt-1 text-sm text-slate-300">
                         {isBye ? `${playerOneName} has a BYE` : `${playerOneName} vs ${getMatchPlayerTwoName(match)}`}
                       </p>
-                      <p className="mt-1 text-sm font-medium text-gray-600">Result: {getMatchResultLabel(match)}</p>
+                      <p className="mt-1 text-sm font-medium text-slate-400">Result: {getMatchResultLabel(match)}</p>
                     </div>
 
                     {isBye ? (
                       <div className="flex items-end">
-                        <span className="rounded-md bg-green-100 px-2.5 py-1.5 text-xs font-semibold text-green-800">
+                        <span className="rounded-md border border-emerald-400/30 bg-emerald-500/10 px-2.5 py-1.5 text-xs font-semibold text-emerald-200">
                           BYE — Automatic Win
                         </span>
                       </div>
@@ -1318,8 +1296,8 @@ export default function AdminTournamentPage() {
                             <button
                               className={`rounded-md border px-2.5 py-1.5 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-60 ${
                                 isSelected
-                                  ? "border-blue-700 bg-blue-700 text-white"
-                                  : "border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+                                  ? "border-sky-400/40 bg-sky-500/20 text-sky-100"
+                                  : "border-slate-700 bg-slate-900/70 text-slate-300 hover:bg-slate-800"
                               }`}
                               disabled={savingMatchId === match.id}
                               key={option.value}
@@ -1347,9 +1325,9 @@ export default function AdminTournamentPage() {
             </ul>
           ) : null}
 
-          <div className="mt-6 rounded-lg border border-gray-200 bg-gray-50 p-4">
-            <h3 className="text-base font-semibold text-gray-950">Add match manually</h3>
-            <p className="mt-1 text-sm text-gray-700">Use only if you need to manually create a missing match.</p>
+          <div className="mt-6 rounded-lg border border-slate-700/70 bg-slate-900/55 p-4">
+            <h3 className="text-base font-semibold text-slate-50">Add match manually</h3>
+            <p className="mt-1 text-sm text-slate-400">Use only if you need to manually create a missing match.</p>
 
             <form className="mt-4 grid gap-3 md:grid-cols-5" onSubmit={handleCreateMatch}>
               <select
@@ -1414,22 +1392,23 @@ export default function AdminTournamentPage() {
               </button>
             </form>
           </div>
-        </div>
+          </CardContent>
+        </Card>
           </div>
         ) : null}
       </section>
       </>
       ) : null}
-        <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 md:col-span-3">
+        <div className="rounded-lg border border-slate-700/70 bg-slate-950/85 p-4 md:col-span-3">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h2 className="text-base font-semibold text-gray-950">Advanced Import Tools</h2>
-              <p className="mt-1 text-sm text-gray-700">
+              <h2 className="text-base font-semibold text-slate-50">Advanced Import Tools</h2>
+              <p className="mt-1 text-sm text-slate-400">
                 Use these only if the full KTS tournament file import is unavailable or you need a partial manual import.
               </p>
             </div>
             <button
-              className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
+              className="rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm font-medium text-slate-200 hover:bg-slate-800"
               onClick={() => setIsAdvancedImportToolsOpen((isOpen) => !isOpen)}
               type="button"
             >
@@ -1439,13 +1418,13 @@ export default function AdminTournamentPage() {
 
           {isAdvancedImportToolsOpen ? (
             <div className="mt-4 grid gap-4">
-              <section className="rounded-lg border border-blue-200 bg-white p-5 shadow-sm">
+              <section className="rounded-lg border border-slate-700/70 bg-slate-900/55 p-5 shadow-sm">
                 <div>
-                  <h2 className="text-xl font-semibold text-gray-950">Import Round from KTS</h2>
+                  <h2 className="text-xl font-semibold text-slate-50">Import Round from KTS</h2>
                 </div>
 
                 <form className="mt-4 grid gap-3 md:grid-cols-[180px_1fr_auto]" onSubmit={handlePreviewRoundCsv}>
-                  <label className="flex flex-col gap-1 text-sm font-medium text-gray-700">
+                  <label className="flex flex-col gap-1 text-sm font-medium text-slate-300">
                     Round number
                     <input
                       className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-950 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
@@ -1456,7 +1435,7 @@ export default function AdminTournamentPage() {
                     />
                   </label>
 
-                  <label className="flex flex-col gap-1 text-sm font-medium text-gray-700">
+                  <label className="flex flex-col gap-1 text-sm font-medium text-slate-300">
                     CSV file
                     <input
                       accept=".csv,text/csv"
@@ -1477,22 +1456,22 @@ export default function AdminTournamentPage() {
                 </form>
 
                 {importPreview ? (
-                  <div className="mt-4 rounded-lg border border-gray-200 bg-gray-50 p-4">
-                    <div className="grid gap-3 text-sm text-gray-700 sm:grid-cols-4">
+                  <div className="mt-4 rounded-lg border border-slate-700/70 bg-slate-950/65 p-4">
+                    <div className="grid gap-3 text-sm text-slate-300 sm:grid-cols-4">
                       <div>
-                        <p className="font-semibold text-gray-950">Round</p>
+                        <p className="font-semibold text-slate-50">Round</p>
                         <p>{importPreview.round_number}</p>
                       </div>
                       <div>
-                        <p className="font-semibold text-gray-950">Matches</p>
+                        <p className="font-semibold text-slate-50">Matches</p>
                         <p>{importPreview.matches_count}</p>
                       </div>
                       <div>
-                        <p className="font-semibold text-gray-950">Players</p>
+                        <p className="font-semibold text-slate-50">Players</p>
                         <p>{importPreview.players_detected_count}</p>
                       </div>
                       <div>
-                        <p className="font-semibold text-gray-950">BYEs</p>
+                        <p className="font-semibold text-slate-50">BYEs</p>
                         <p>{importPreview.bye_count}</p>
                       </div>
                     </div>
@@ -1516,11 +1495,11 @@ export default function AdminTournamentPage() {
                 {importError ? <p className="mt-3 text-sm font-medium text-red-700">{importError}</p> : null}
               </section>
 
-              <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
-                <h2 className="text-xl font-semibold text-gray-950">Import KTS Standings CSV</h2>
+              <section className="rounded-lg border border-slate-700/70 bg-slate-900/55 p-5 shadow-sm">
+                <h2 className="text-xl font-semibold text-slate-50">Import KTS Standings CSV</h2>
 
                 <form className="mt-4 grid gap-3 md:grid-cols-[1fr_auto]" onSubmit={handleImportStandingsCsv}>
-                  <label className="flex flex-col gap-1 text-sm font-medium text-gray-700">
+                  <label className="flex flex-col gap-1 text-sm font-medium text-slate-300">
                     CSV file
                     <input
                       accept=".csv,text/csv"

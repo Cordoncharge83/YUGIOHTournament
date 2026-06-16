@@ -1,8 +1,20 @@
 import { useEffect, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { Link } from "react-router-dom";
+import { CalendarDays, MapPin, Plus, RefreshCw, Share2, Trash2, Users } from "lucide-react";
 
 import api from "../api/client";
+import { Badge } from "../components/ui/badge";
+import { Button } from "../components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "../components/ui/dialog";
+import { Input } from "../components/ui/input";
 
 export default function AdminPage() {
   const [tournaments, setTournaments] = useState([]);
@@ -93,148 +105,169 @@ export default function AdminPage() {
   }
 
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-5xl flex-col gap-6 px-4 py-8">
+    <main className="mx-auto flex min-h-screen w-full max-w-6xl flex-col gap-6 px-4 py-8">
       <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="text-sm font-medium uppercase tracking-wide text-blue-700">Admin</p>
-          <h1 className="mt-2 text-3xl font-semibold text-gray-950">Tournaments</h1>
+          <p className="text-sm font-medium uppercase tracking-wide text-sky-300">Admin Console</p>
+          <h1 className="mt-2 text-3xl font-semibold text-slate-50">Tournaments</h1>
+          <p className="mt-2 max-w-2xl text-sm text-slate-400">
+            Create, manage, and share local Yu-Gi-Oh tournament events.
+          </p>
         </div>
-        <Link
-          className="self-start rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 sm:self-auto"
-          to="/admin/players"
-        >
-          Community Players
-        </Link>
+        <Button asChild className="self-start sm:self-auto" variant="outline">
+          <Link to="/admin/players">
+            <Users className="h-4 w-4" />
+            Community Players
+          </Link>
+        </Button>
       </header>
 
-      <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
-        <h2 className="text-lg font-semibold text-gray-950">Create tournament</h2>
-        <form className="mt-4 grid gap-4 md:grid-cols-[1fr_1fr_auto]" onSubmit={handleSubmit}>
-          <label className="flex flex-col gap-1 text-sm font-medium text-gray-700">
-            Name
-            <input
-              className="rounded-md border border-gray-300 px-3 py-2 text-base text-gray-950 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
-              onChange={(event) => setName(event.target.value)}
-              placeholder="Local tournament"
-              type="text"
-              value={name}
-            />
-          </label>
+      <Card className="border-slate-700/70 bg-slate-950/85">
+        <CardHeader>
+          <CardTitle>Create tournament</CardTitle>
+          <CardDescription>Start a new local event. KTS setup can be connected from the tournament detail page.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form className="grid gap-4 md:grid-cols-[1fr_1fr_auto]" onSubmit={handleSubmit}>
+            <label className="flex flex-col gap-2 text-sm font-medium text-slate-300">
+              Name
+              <Input
+                onChange={(event) => setName(event.target.value)}
+                placeholder="Local tournament"
+                type="text"
+                value={name}
+              />
+            </label>
 
-          <label className="flex flex-col gap-1 text-sm font-medium text-gray-700">
-            Location
-            <input
-              className="rounded-md border border-gray-300 px-3 py-2 text-base text-gray-950 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
-              onChange={(event) => setLocation(event.target.value)}
-              placeholder="Store name"
-              type="text"
-              value={location}
-            />
-          </label>
+            <label className="flex flex-col gap-2 text-sm font-medium text-slate-300">
+              Location
+              <Input
+                onChange={(event) => setLocation(event.target.value)}
+                placeholder="Store name"
+                type="text"
+                value={location}
+              />
+            </label>
 
-          <button
-            className="self-end rounded-md bg-blue-700 px-4 py-2 font-medium text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:bg-gray-400"
-            disabled={isCreating}
-            type="submit"
-          >
-            {isCreating ? "Creating..." : "Create"}
-          </button>
-        </form>
-        {error ? <p className="mt-4 text-sm font-medium text-red-700">{error}</p> : null}
-      </section>
+            <Button className="self-end" disabled={isCreating} type="submit">
+              <Plus className="h-4 w-4" />
+              {isCreating ? "Creating..." : "Create"}
+            </Button>
+          </form>
+          {error ? <p className="mt-4 text-sm font-medium text-rose-300">{error}</p> : null}
+        </CardContent>
+      </Card>
 
-      <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
-        <div className="flex items-center justify-between gap-4">
-          <h2 className="text-lg font-semibold text-gray-950">Tournament list</h2>
-          <button className="text-sm font-medium text-blue-700 hover:text-blue-900" onClick={fetchTournaments} type="button">
-            Refresh
-          </button>
-        </div>
-
-        {isLoading ? <p className="mt-4 text-gray-700">Loading tournaments...</p> : null}
-
-        {!isLoading && tournaments.length === 0 ? (
-          <p className="mt-4 text-gray-700">No tournaments created yet.</p>
-        ) : null}
-
-        {tournaments.length > 0 ? (
-          <ul className="mt-4 divide-y divide-gray-200">
-            {tournaments.map((tournament) => (
-              <li className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between" key={tournament.id}>
-                <div>
-                  <p className="font-medium text-gray-950">{tournament.name}</p>
-                  <p className="mt-1 text-sm text-gray-600">{tournament.location || "No location"}</p>
-                </div>
-                <div className="flex gap-2">
-                  <Link
-                    className="rounded-md bg-blue-700 px-3 py-2 text-sm font-medium text-white hover:bg-blue-800"
-                    to={`/admin/tournaments/${tournament.id}`}
-                  >
-                    Open
-                  </Link>
-                  <button
-                    className="rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-                    onClick={() => {
-                      setCopyMessage("");
-                      setShareTournament(tournament);
-                    }}
-                    type="button"
-                  >
-                    Share
-                  </button>
-                  <button
-                    className="rounded-md border border-red-200 px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
-                    disabled={deletingTournamentId === tournament.id}
-                    onClick={() => handleDeleteTournament(tournament)}
-                    type="button"
-                  >
-                    {deletingTournamentId === tournament.id ? "Deleting..." : "Delete"}
-                  </button>
-                </div>
-              </li>
-            ))}
-          </ul>
-        ) : null}
-      </section>
-
-      {shareTournament ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-950/50 px-4">
-          <div className="w-full max-w-sm rounded-lg bg-white p-5 shadow-xl">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-sm font-medium uppercase tracking-wide text-blue-700">Share tournament</p>
-                <h2 className="mt-1 text-xl font-semibold text-gray-950">{shareTournament.name}</h2>
-              </div>
-              <button
-                className="rounded-md border border-gray-300 px-2 py-1 text-sm font-medium text-gray-700 hover:bg-gray-50"
-                onClick={() => setShareTournament(null)}
-                type="button"
-              >
-                Close
-              </button>
-            </div>
-
-            <div className="mt-5 flex justify-center">
-              <div className="rounded-lg border border-gray-200 bg-white p-3">
-                <QRCodeSVG value={getPublicUrl(shareTournament.id)} size={180} />
-              </div>
-            </div>
-
-            <p className="mt-4 break-all rounded-md bg-gray-50 px-3 py-2 text-sm text-gray-700">
-              {getPublicUrl(shareTournament.id)}
-            </p>
-
-            <button
-              className="mt-4 w-full rounded-md bg-blue-700 px-3 py-2 text-sm font-medium text-white hover:bg-blue-800"
-              onClick={() => handleCopyLink(getPublicUrl(shareTournament.id))}
-              type="button"
-            >
-              Copy link
-            </button>
-            {copyMessage ? <p className="mt-3 text-center text-sm font-medium text-gray-600">{copyMessage}</p> : null}
+      <Card className="border-slate-700/70 bg-slate-950/85">
+        <CardHeader className="flex-row items-center justify-between gap-4 space-y-0">
+          <div>
+            <CardTitle>Tournament dashboard</CardTitle>
+            <CardDescription>{tournaments.length} saved tournament{tournaments.length === 1 ? "" : "s"}</CardDescription>
           </div>
-        </div>
-      ) : null}
+          <Button onClick={fetchTournaments} size="sm" type="button" variant="ghost">
+            <RefreshCw className="h-4 w-4" />
+            Refresh
+          </Button>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? <p className="text-sm text-slate-400">Loading tournaments...</p> : null}
+
+          {!isLoading && tournaments.length === 0 ? (
+            <div className="rounded-lg border border-dashed border-slate-700 bg-slate-900/40 p-6 text-sm text-slate-400">
+              No tournaments created yet.
+            </div>
+          ) : null}
+
+          {tournaments.length > 0 ? (
+            <div className="grid gap-3">
+              {tournaments.map((tournament) => (
+                <Card className="border-slate-700/60 bg-slate-900/55 transition-colors hover:border-sky-400/40" key={tournament.id}>
+                  <CardContent className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 className="truncate text-base font-semibold text-slate-50">{tournament.name}</h3>
+                        <Badge variant="secondary">#{tournament.id}</Badge>
+                      </div>
+                      <div className="mt-2 flex flex-wrap gap-3 text-sm text-slate-400">
+                        <span className="inline-flex items-center gap-1">
+                          <MapPin className="h-3.5 w-3.5 text-slate-500" />
+                          {tournament.location || "No location"}
+                        </span>
+                        <span className="inline-flex items-center gap-1">
+                          <CalendarDays className="h-3.5 w-3.5 text-slate-500" />
+                          {new Date(tournament.created_at).toLocaleDateString()}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <Button asChild size="sm">
+                        <Link to={`/admin/tournaments/${tournament.id}`}>Open</Link>
+                      </Button>
+                      <Button
+                        onClick={() => {
+                          setCopyMessage("");
+                          setShareTournament(tournament);
+                        }}
+                        size="sm"
+                        type="button"
+                        variant="outline"
+                      >
+                        <Share2 className="h-4 w-4" />
+                        Share
+                      </Button>
+                      <Button
+                        disabled={deletingTournamentId === tournament.id}
+                        onClick={() => handleDeleteTournament(tournament)}
+                        size="sm"
+                        type="button"
+                        variant="destructive"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        {deletingTournamentId === tournament.id ? "Deleting..." : "Delete"}
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          ) : null}
+        </CardContent>
+      </Card>
+
+      <Dialog
+        onOpenChange={(isOpen) => {
+          if (!isOpen) {
+            setShareTournament(null);
+          }
+        }}
+        open={Boolean(shareTournament)}
+      >
+        <DialogContent>
+          {shareTournament ? (
+            <>
+              <DialogHeader>
+                <DialogDescription>Share tournament</DialogDescription>
+                <DialogTitle>{shareTournament.name}</DialogTitle>
+              </DialogHeader>
+
+              <div className="flex justify-center">
+                <div className="rounded-lg border border-slate-700 bg-white p-3">
+                  <QRCodeSVG value={getPublicUrl(shareTournament.id)} size={180} />
+                </div>
+              </div>
+
+              <p className="break-all rounded-md border border-slate-800 bg-slate-900/70 px-3 py-2 text-sm text-slate-300">
+                {getPublicUrl(shareTournament.id)}
+              </p>
+
+              <Button className="w-full" onClick={() => handleCopyLink(getPublicUrl(shareTournament.id))} type="button">
+                Copy link
+              </Button>
+              {copyMessage ? <p className="text-center text-sm font-medium text-slate-400">{copyMessage}</p> : null}
+            </>
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </main>
   );
 }
