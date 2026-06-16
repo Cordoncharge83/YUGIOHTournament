@@ -69,6 +69,7 @@ export default function AdminTournamentPage() {
   const [isRunningAutoSync, setIsRunningAutoSync] = useState(false);
   const [isRefreshingAutoSyncStatus, setIsRefreshingAutoSyncStatus] = useState(false);
   const [isChoosingAutoSyncFile, setIsChoosingAutoSyncFile] = useState(false);
+  const [isResumingAutoSync, setIsResumingAutoSync] = useState(false);
   const lastHandledAutoSyncAtRef = useRef(null);
   const [activeTournamentTab, setActiveTournamentTab] = useState("matches");
   const [isManualToolsOpen, setIsManualToolsOpen] = useState(true);
@@ -178,6 +179,16 @@ export default function AdminTournamentPage() {
     return response.data;
   }
 
+  async function enableAndRunAutoSyncForPath(filePath) {
+    setAutoSyncFilePath(filePath);
+    await enableAutoSyncForPath(filePath);
+
+    const syncResponse = await api.post("/auto-sync/run-now");
+    setAutoSyncStatus(syncResponse.data.status);
+    await fetchTournamentDetailData();
+    return syncResponse.data.summary;
+  }
+
   async function handleRefreshAutoSyncStatus() {
     try {
       setIsRefreshingAutoSyncStatus(true);
@@ -201,6 +212,7 @@ export default function AdminTournamentPage() {
       setAutoSyncError("");
       setAutoSyncMessage("");
       await enableAutoSyncForPath(autoSyncFilePath.trim());
+      await fetchTournament();
       setAutoSyncMessage("Auto-sync enabled.");
     } catch (error) {
       setAutoSyncError(getApiErrorMessage(error, "Could not enable auto-sync."));
@@ -237,20 +249,37 @@ export default function AdminTournamentPage() {
         return;
       }
 
-      setAutoSyncFilePath(selectedPath);
-      await enableAutoSyncForPath(selectedPath);
-
-      const syncResponse = await api.post("/auto-sync/run-now");
-      setAutoSyncStatus(syncResponse.data.status);
-      await fetchTournamentDetailData();
+      const summary = await enableAndRunAutoSyncForPath(selectedPath);
       setAutoSyncMessage(
-        `Selected KTS file, enabled auto-sync, and imported ${syncResponse.data.summary.players_imported} players, ${syncResponse.data.summary.rounds_imported} rounds, ${syncResponse.data.summary.matches_imported} matches, and ${syncResponse.data.summary.standings_imported} standings entries.`,
+        `Selected KTS file, enabled auto-sync, and imported ${summary.players_imported} players, ${summary.rounds_imported} rounds, ${summary.matches_imported} matches, and ${summary.standings_imported} standings entries.`,
       );
     } catch (error) {
       setAutoSyncError(getApiErrorMessage(error, "Could not choose and sync KTS file."));
       await fetchAutoSyncStatus();
     } finally {
       setIsChoosingAutoSyncFile(false);
+    }
+  }
+
+  async function handleResumeAutoSync() {
+    if (!tournament?.kts_file_path) {
+      setAutoSyncError("No saved KTS file path is available for this tournament.");
+      return;
+    }
+
+    try {
+      setIsResumingAutoSync(true);
+      setAutoSyncError("");
+      setAutoSyncMessage("");
+      const summary = await enableAndRunAutoSyncForPath(tournament.kts_file_path);
+      setAutoSyncMessage(
+        `Resumed watching and imported ${summary.players_imported} players, ${summary.rounds_imported} rounds, ${summary.matches_imported} matches, and ${summary.standings_imported} standings entries.`,
+      );
+    } catch (error) {
+      setAutoSyncError(getApiErrorMessage(error, "Could not resume auto-sync."));
+      await fetchAutoSyncStatus();
+    } finally {
+      setIsResumingAutoSync(false);
     }
   }
 
@@ -320,6 +349,14 @@ export default function AdminTournamentPage() {
 
     setAutoSyncFilePath((currentPath) => currentPath || autoSyncStatus.file_path);
   }, [autoSyncStatus?.file_path]);
+
+  useEffect(() => {
+    if (!tournament?.kts_file_path) {
+      return;
+    }
+
+    setAutoSyncFilePath((currentPath) => currentPath || tournament.kts_file_path);
+  }, [tournament?.kts_file_path]);
 
   async function handleCreateNextRound() {
     const nextRoundNumber =
@@ -651,15 +688,15 @@ export default function AdminTournamentPage() {
           || cossyId.includes(normalizedStandingsSearch);
       })
     : standings;
-  const watchedFileName = autoSyncStatus?.file_name
-    || (autoSyncStatus?.file_path
-      ? autoSyncStatus.file_path.split(/[\\/]/).filter(Boolean).pop()
-      : null);
-  const watchedFilePath = autoSyncStatus?.file_path || null;
   const autoSyncTargetsCurrentTournament = Number(autoSyncStatus?.tournament_id) === Number(id);
   const autoSyncTargetsAnotherTournament = Boolean(
     autoSyncStatus?.enabled && autoSyncStatus?.tournament_id && !autoSyncTargetsCurrentTournament,
   );
+  const activeWatcherForCurrentTournament = Boolean(autoSyncStatus?.enabled && autoSyncTargetsCurrentTournament);
+  const savedKtsFilePath = tournament?.kts_file_path || null;
+  const savedKtsFileName = savedKtsFilePath ? savedKtsFilePath.split(/[\\/]/).filter(Boolean).pop() : null;
+  const watchedFileName = activeWatcherForCurrentTournament ? autoSyncStatus?.file_name : null;
+  const watchedFilePath = activeWatcherForCurrentTournament ? autoSyncStatus?.file_path : null;
   const autoSyncTargetLabel = autoSyncStatus?.tournament_id
     ? `${autoSyncStatus.tournament_name || "Tournament"} #${autoSyncStatus.tournament_id}`
     : null;
@@ -667,7 +704,11 @@ export default function AdminTournamentPage() {
     ? new Date(autoSyncStatus.last_sync_at).toLocaleString()
     : null;
   const isRunningInTauri = isTauriApp();
-  const autoSyncStateLabel = autoSyncStatus?.enabled ? "Watching / Enabled" : "Disabled";
+  const autoSyncStateLabel = activeWatcherForCurrentTournament
+    ? "Watching / Enabled"
+    : savedKtsFilePath
+      ? "Saved, not watching"
+      : "Disabled";
 
   useEffect(() => {
     if (rounds.length === 0) {
@@ -890,18 +931,34 @@ export default function AdminTournamentPage() {
 
             {isRunningInTauri ? (
               <div className="mt-4 rounded-md border border-yellow-700/30 bg-yellow-100/40 p-4">
-                <p className="text-xs font-semibold uppercase tracking-wide text-yellow-800">Primary action</p>
+                <p className="text-xs font-semibold uppercase tracking-wide text-yellow-800">Desktop KTS file</p>
                 <div className="mt-3 flex flex-wrap items-center gap-2">
+                  {savedKtsFilePath && !activeWatcherForCurrentTournament ? (
+                    <button
+                      className="rounded-md bg-yellow-700 px-4 py-2 text-sm font-medium text-white hover:bg-yellow-800 disabled:cursor-not-allowed disabled:bg-gray-400"
+                      disabled={isResumingAutoSync || isChoosingAutoSyncFile || isEnablingAutoSync || isRunningAutoSync}
+                      onClick={handleResumeAutoSync}
+                      type="button"
+                    >
+                      {isResumingAutoSync ? "Resuming..." : "Resume Watching"}
+                    </button>
+                  ) : null}
                   <button
-                    className="rounded-md bg-yellow-700 px-4 py-2 text-sm font-medium text-white hover:bg-yellow-800 disabled:cursor-not-allowed disabled:bg-gray-400"
-                    disabled={isChoosingAutoSyncFile || isEnablingAutoSync || isRunningAutoSync}
+                    className={`rounded-md px-4 py-2 text-sm font-medium disabled:cursor-not-allowed disabled:bg-gray-400 ${
+                      savedKtsFilePath
+                        ? "border border-yellow-700 bg-white text-yellow-800 hover:bg-yellow-50"
+                        : "bg-yellow-700 text-white hover:bg-yellow-800"
+                    }`}
+                    disabled={isChoosingAutoSyncFile || isResumingAutoSync || isEnablingAutoSync || isRunningAutoSync}
                     onClick={handleChooseAutoSyncFile}
                     type="button"
                   >
-                    {isChoosingAutoSyncFile ? "Choosing..." : "Choose KTS File"}
+                    {isChoosingAutoSyncFile ? "Choosing..." : savedKtsFilePath ? "Choose Different File" : "Choose KTS File"}
                   </button>
                   <span className="text-xs font-medium text-gray-600">
-                    Imports the selected file now and starts watching it automatically.
+                    {savedKtsFilePath
+                      ? "Saved paths are tournament-specific. Resume or replace this tournament's file."
+                      : "Selects, imports, saves, and starts watching this tournament's KTS file."}
                   </span>
                 </div>
               </div>
@@ -934,7 +991,7 @@ export default function AdminTournamentPage() {
             <div className="mt-4 flex flex-wrap gap-2">
                 <button
                   className="rounded-md bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-gray-700 disabled:cursor-not-allowed disabled:bg-gray-400"
-                  disabled={!autoSyncStatus?.enabled || isRunningAutoSync || isChoosingAutoSyncFile}
+                  disabled={!activeWatcherForCurrentTournament || isRunningAutoSync || isChoosingAutoSyncFile || isResumingAutoSync}
                   onClick={handleRunAutoSyncNow}
                   type="button"
                 >
@@ -952,8 +1009,13 @@ export default function AdminTournamentPage() {
 
             <div className="mt-4 grid gap-3 text-sm text-gray-700 sm:grid-cols-2">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Watched file</p>
-                <p className="mt-1 font-medium text-gray-950">{watchedFileName || "Not configured"}</p>
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Saved file for this tournament</p>
+                <p className="mt-1 font-medium text-gray-950">{savedKtsFileName || "Not configured"}</p>
+                {savedKtsFilePath ? <p className="mt-1 break-all text-xs text-gray-500">{savedKtsFilePath}</p> : null}
+              </div>
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Active watched file</p>
+                <p className="mt-1 font-medium text-gray-950">{watchedFileName || "Not watching this tournament"}</p>
                 {watchedFilePath ? <p className="mt-1 break-all text-xs text-gray-500">{watchedFilePath}</p> : null}
               </div>
               <div>

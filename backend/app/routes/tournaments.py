@@ -521,6 +521,11 @@ def delete_tournament(tournament_id: int, db: Session = Depends(get_db)) -> dict
     if tournament is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
 
+    from app.kts_watcher import kts_auto_sync_service
+
+    if kts_auto_sync_service.status().get("tournament_id") == tournament_id:
+        kts_auto_sync_service.disable()
+
     profile_ids = {
         profile_id
         for profile_id in db.scalars(select(Player.player_profile_id).where(Player.tournament_id == tournament_id))

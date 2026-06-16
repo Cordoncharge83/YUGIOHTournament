@@ -20,11 +20,14 @@ def enable_auto_sync(request: AutoSyncEnableRequest, db: Session = Depends(get_d
     if tournament is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
 
-    return kts_auto_sync_service.enable(
+    auto_sync_status = kts_auto_sync_service.enable(
         tournament_id=tournament.id,
         tournament_name=tournament.name,
         file_path=request.file_path,
     )
+    tournament.kts_file_path = auto_sync_status["file_path"]
+    db.commit()
+    return auto_sync_status
 
 
 @router.post("/disable", response_model=AutoSyncStatusRead)

@@ -49,6 +49,11 @@ def create_db_tables() -> None:
     Base.metadata.create_all(bind=engine)
     inspector = inspect(engine)
     table_names = inspector.get_table_names()
+    if "tournaments" in table_names:
+        tournament_columns = {column["name"] for column in inspector.get_columns("tournaments")}
+        if "kts_file_path" not in tournament_columns:
+            with engine.begin() as connection:
+                connection.execute(text("ALTER TABLE tournaments ADD COLUMN kts_file_path TEXT"))
     if "matches" in inspector.get_table_names():
         match_columns = {column["name"] for column in inspector.get_columns("matches")}
         if "result_status" not in match_columns:

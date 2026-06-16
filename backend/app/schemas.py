@@ -37,6 +37,17 @@ class TournamentRead(BaseModel):
     name: str
     location: str | None
     current_round_id: int | None
+    kts_file_path: str | None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class PublicTournamentSummaryRead(BaseModel):
+    id: int
+    name: str
+    location: str | None
+    current_round_id: int | None
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -211,7 +222,7 @@ class PublicStandingRead(BaseModel):
 
 
 class PublicTournamentRead(BaseModel):
-    tournament: TournamentRead
+    tournament: PublicTournamentSummaryRead
     players: list[PlayerRead]
     rounds: list[RoundRead]
     matches: list[PublicMatchRead]
