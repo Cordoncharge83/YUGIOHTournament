@@ -8,7 +8,8 @@ Instead of replacing KTS, this project focuses on improving the player experienc
 - Public round display
 - QR code sharing
 - Live tournament information
-- KTS CSV import workflow
+- KTS .Tournament import workflow
+- Local KTS auto-sync for live-event updates
 - Lightweight local tournament broadcasting
 
 ---
@@ -20,7 +21,7 @@ Most local communities currently rely on:
 - Printed pairings
 - Discord screenshots
 - Google Forms
-- Crowding around the organizer’s laptop
+- Crowding around the organizer's laptop
 
 Meanwhile, KTS itself is:
 
@@ -30,7 +31,7 @@ Meanwhile, KTS itself is:
 
 This project bridges that gap.
 
-The organizer continues using KTS normally, then exports the current round pairings as CSV and imports them into this application.
+The organizer continues using KTS normally, then imports the KTS `.Tournament` file or enables local auto-sync during a live event.
 
 Players can then:
 
@@ -48,17 +49,27 @@ Players can then:
 - Tournament list view
 - Tournament detail page
 
-## KTS CSV Import
+## KTS Tournament File Import
 
-- Import pairings exported from KTS
+- Import `.Tournament` files exported by KTS
 - Automatically:
   - Create players
-  - Create/update rounds
-  - Create/update matches
+  - Create rounds
+  - Create matches
+  - Import standings when available
   - Set current round
-- Import preview before confirmation
-- Replace existing round matches safely
 - BYE handling support
+
+## KTS Auto-Sync
+
+- Watch one configured `.Tournament` file during a live event
+- Automatically import changes after KTS saves the file
+- Manual `Sync Now` action for immediate updates
+
+## KTS CSV Import
+
+- Advanced fallback import for round pairings and standings CSVs
+- Kept for compatibility with partial KTS exports
 
 ## Public Tournament Page
 
@@ -96,7 +107,7 @@ Designed for fast tournament-day updates.
 - React
 - Vite
 - Tailwind CSS
-- TypeScript
+- JavaScript
 
 ## Backend
 
@@ -126,9 +137,9 @@ Primary workflow:
 
 ```text
 KTS
-→ Export current round CSV
-→ Import into app
-→ Public page updates
+-> Save .Tournament file
+-> Import once or auto-sync into app
+-> Public page updates
 ```
 
 ---
@@ -216,17 +227,24 @@ DATABASE_URL=postgresql+psycopg://postgres:password@localhost:5432/yugioh_tourna
 
 ---
 
-# CSV Import Notes
+# KTS Import Notes
 
-Currently supported:
+Recommended workflow:
 
-- KTS exported pairing CSVs for the current round
+- Use `KTS Tournament File -> Manual Import` for one-time updates.
+- Use `KTS Tournament File -> Auto-Sync` during a live event.
+- Auto-sync requires pasting the full local `.Tournament` file path in the web version.
 
-Used columns:
+Advanced CSV fallback:
 
-- Table
-- Player 1
-- Player 2
+- Round pairings CSVs can still be imported manually.
+- Standings CSVs can still be imported manually.
+
+Pairings CSV columns:
+
+- `Table`
+- `Player 1`
+- `Player 2`
 
 Extra KTS export columns are ignored.
 
@@ -238,11 +256,8 @@ BYEs are handled automatically and are not added as players.
 
 Potential future improvements:
 
-- Public standings
-- Standings import
 - TV/display mode
-- Real-time sync
-- Desktop/offline version (Tauri)
+- Desktop packaging with Tauri
 - OBS overlay support
 - Tournament archive/history
 - Better mobile polish

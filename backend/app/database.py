@@ -27,7 +27,7 @@ engine = create_database_engine(DATABASE_URL)
 
 
 @event.listens_for(engine, "connect")
-def enable_sqlite_foreign_keys(dbapi_connection, connection_record) -> None:
+def enable_sqlite_foreign_keys(dbapi_connection, _connection_record) -> None:
     if not engine.url.drivername.startswith("sqlite"):
         return
 

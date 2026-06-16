@@ -1,4 +1,4 @@
-# YuGiOh Tournament Manager — Project Rules
+# YuGiOh Tournament Manager - Project Rules
 
 ## Goal
 
@@ -15,8 +15,8 @@ V1 focuses only on:
 * table assignments
 * result entry
 * public tournament display page
-
-No advanced tournament automation yet.
+* KTS `.Tournament` import
+* local KTS auto-sync for one active live-event file
 
 ---
 
@@ -79,14 +79,12 @@ Not allowed in V1:
 * Authentication
 * Role systems
 * Decklists
-* Offline mode
-* Tauri
+* Tauri packaging
 * PWA
 * Automatic Swiss pairings
 * Tie-break algorithms
 * Notifications
 * Match history analytics
-* Live synchronization
 * Multi-admin editing
 * Payments
 * Discord integration
