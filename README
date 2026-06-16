@@ -209,6 +209,34 @@ http://127.0.0.1:5173
 
 ---
 
+# Tauri Desktop Proof Of Concept
+
+The frontend includes a minimal Tauri v2 scaffold that loads the existing Vite app in a desktop window.
+
+Prerequisites for Tauri development on Windows:
+
+- Rust via rustup
+- Microsoft Visual Studio Build Tools with MSVC and Windows SDK components
+- WebView2, which is already installed on most current Windows systems
+
+Run the desktop dev window:
+
+```bash
+cd frontend
+npm run tauri:dev
+```
+
+The normal web workflow remains unchanged:
+
+```bash
+cd frontend
+npm run dev
+```
+
+This proof of concept only wraps the existing React UI. It does not package the FastAPI backend, add a native file picker, or change auto-sync behavior yet.
+
+---
+
 # Optional PostgreSQL Setup
 
 PostgreSQL/Docker remains available for compatibility testing, but it is no longer the default local workflow.

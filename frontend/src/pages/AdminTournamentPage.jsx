@@ -16,6 +16,10 @@ function formatPlayerDisplayName(name) {
   return (name || "").replace(/\s*\([^()]*\)\s*$/, "").trim();
 }
 
+function isTauriApp() {
+  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+}
+
 export default function AdminTournamentPage() {
   const { id } = useParams();
   const [tournament, setTournament] = useState(null);
@@ -365,6 +369,21 @@ export default function AdminTournamentPage() {
     }
   }
 
+  async function handleOpenPublicPage(event) {
+    if (!isTauriApp()) {
+      return;
+    }
+
+    event.preventDefault();
+
+    try {
+      const { openUrl } = await import("@tauri-apps/plugin-opener");
+      await openUrl(publicUrl);
+    } catch {
+      window.open(publicUrl, "_blank", "noopener,noreferrer");
+    }
+  }
+
   function updateImportRoundNumber(value) {
     setImportRoundNumber(value);
     setImportPreview(null);
@@ -686,6 +705,7 @@ export default function AdminTournamentPage() {
               <a
                 className="rounded-md bg-blue-700 px-3 py-2 text-sm font-medium text-white hover:bg-blue-800"
                 href={publicPath}
+                onClick={handleOpenPublicPage}
                 rel="noreferrer"
                 target="_blank"
               >

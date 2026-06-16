@@ -28,3 +28,7 @@ frontend/.vite/
 
 # Logs
 *.log
+
+# Tauri/Rust build output
+target/
+frontend/src-tauri/target/
