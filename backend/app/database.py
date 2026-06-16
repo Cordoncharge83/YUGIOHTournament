@@ -1,17 +1,41 @@
 import os
+from pathlib import Path
 
 from dotenv import load_dotenv
-from sqlalchemy import create_engine, inspect, text
+from sqlalchemy import create_engine, event, inspect, text
+from sqlalchemy.engine import Engine, make_url
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 load_dotenv()
 
-DATABASE_URL = os.getenv("DATABASE_URL")
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./data/app.db")
 
-if not DATABASE_URL:
-    raise RuntimeError("DATABASE_URL environment variable is not set")
 
-engine = create_engine(DATABASE_URL)
+def create_database_engine(database_url: str) -> Engine:
+    url = make_url(database_url)
+    connect_args = {}
+
+    if url.drivername.startswith("sqlite"):
+        connect_args["check_same_thread"] = False
+        if url.database and url.database != ":memory:":
+            Path(url.database).expanduser().parent.mkdir(parents=True, exist_ok=True)
+
+    return create_engine(database_url, connect_args=connect_args)
+
+
+engine = create_database_engine(DATABASE_URL)
+
+
+@event.listens_for(engine, "connect")
+def enable_sqlite_foreign_keys(dbapi_connection, connection_record) -> None:
+    if not engine.url.drivername.startswith("sqlite"):
+        return
+
+    cursor = dbapi_connection.cursor()
+    cursor.execute("PRAGMA foreign_keys=ON")
+    cursor.close()
+
+
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 

@@ -102,11 +102,13 @@ Designed for fast tournament-day updates.
 
 - FastAPI
 - SQLAlchemy
-- PostgreSQL
+- SQLite by default
+- PostgreSQL optional
 
 ## Database
 
-- PostgreSQL (Docker)
+- SQLite local database file
+- PostgreSQL via Docker remains available as optional legacy development tooling
 
 ---
 
@@ -137,17 +139,21 @@ KTS
 
 - Python 3.11+
 - Node.js
-- Docker Desktop
+- Docker Desktop is not required for the normal SQLite workflow
 
 ---
 
 # Backend Setup
 
-Start PostgreSQL:
+Local development uses SQLite by default. No Docker or PostgreSQL service is required.
 
 ```bash
-docker compose up -d
+DATABASE_URL=sqlite:///./data/app.db
 ```
+
+This value is already set in `backend/.env.example`; copy it to `backend/.env` if needed.
+
+The backend creates `./data/app.db` automatically on startup.
 
 Activate virtual environment:
 
@@ -188,6 +194,24 @@ Frontend runs on:
 
 ```text
 http://127.0.0.1:5173
+```
+
+---
+
+# Optional PostgreSQL Setup
+
+PostgreSQL/Docker remains available for compatibility testing, but it is no longer the default local workflow.
+
+Start PostgreSQL only if you intentionally set `DATABASE_URL` to a PostgreSQL URL:
+
+```bash
+docker compose up -d
+```
+
+Example PostgreSQL URL:
+
+```bash
+DATABASE_URL=postgresql+psycopg://postgres:password@localhost:5432/yugioh_tournament
 ```
 
 ---

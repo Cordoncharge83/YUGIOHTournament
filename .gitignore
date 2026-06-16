@@ -10,6 +10,12 @@ frontend/dist/
 # Environment
 .env
 
+# Local databases
+data/
+*.db
+*.sqlite
+*.sqlite3
+
 # OS
 .DS_Store
 Thumbs.db

@@ -37,11 +37,13 @@ Backend:
 
 Database:
 
-* PostgreSQL
+* SQLite by default
+* PostgreSQL optional for compatibility
 
 Infrastructure:
 
-* Docker Compose ONLY for PostgreSQL
+* No infrastructure required for normal SQLite development
+* Docker Compose is optional legacy tooling for PostgreSQL compatibility testing
 
 ---
 
@@ -123,6 +125,7 @@ Avoid premature optimization.
 * Keep validation readable
 * Use SQLAlchemy ORM
 * Use environment variables for DB config
+* Default local database URL is `sqlite:///./data/app.db`
 
 ---
 

@@ -1,3 +1,6 @@
+# Optional legacy development tooling.
+# Normal local development uses SQLite: DATABASE_URL=sqlite:///./data/app.db
+# Use this file only when intentionally testing PostgreSQL compatibility.
 services:
   db:
     image: postgres:16
