@@ -12,12 +12,19 @@ class HealthCheck(BaseModel):
 
 class AutoSyncStatusRead(BaseModel):
     enabled: bool
-    watch_file: str | None
     tournament_id: int | None
-    last_file: str | None
+    tournament_name: str | None
+    file_path: str | None
+    file_name: str | None
+    file_exists: bool
     last_sync_at: datetime | None
     last_status: str | None
     last_error: str | None
+
+
+class AutoSyncEnableRequest(BaseModel):
+    tournament_id: int
+    file_path: str
 
 
 class TournamentCreate(BaseModel):
@@ -57,6 +64,11 @@ class TournamentFileImportSummary(BaseModel):
     matches_imported: int
     standings_imported: int
     current_round: int | None
+
+
+class AutoSyncRunNowResponse(BaseModel):
+    summary: TournamentFileImportSummary
+    status: AutoSyncStatusRead
 
 
 class RoundCsvPreviewSummary(BaseModel):

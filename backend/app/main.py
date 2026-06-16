@@ -26,7 +26,6 @@ app.include_router(auto_sync.router)
 @app.on_event("startup")
 def on_startup() -> None:
     create_db_tables()
-    kts_auto_sync_service.start()
 
 
 @app.on_event("shutdown")

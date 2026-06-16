@@ -57,7 +57,13 @@ export default function AdminTournamentPage() {
   const [tournamentFileImportMessage, setTournamentFileImportMessage] = useState("");
   const [tournamentFileImportError, setTournamentFileImportError] = useState("");
   const [autoSyncStatus, setAutoSyncStatus] = useState(null);
-  const [isRefreshingAutoSync, setIsRefreshingAutoSync] = useState(false);
+  const [autoSyncFilePath, setAutoSyncFilePath] = useState("");
+  const [autoSyncMessage, setAutoSyncMessage] = useState("");
+  const [autoSyncError, setAutoSyncError] = useState("");
+  const [isEnablingAutoSync, setIsEnablingAutoSync] = useState(false);
+  const [isDisablingAutoSync, setIsDisablingAutoSync] = useState(false);
+  const [isRunningAutoSync, setIsRunningAutoSync] = useState(false);
+  const [isRefreshingAutoSyncStatus, setIsRefreshingAutoSyncStatus] = useState(false);
   const [activeTournamentTab, setActiveTournamentTab] = useState("matches");
   const [isManualToolsOpen, setIsManualToolsOpen] = useState(true);
   const [isAdvancedImportToolsOpen, setIsAdvancedImportToolsOpen] = useState(false);
@@ -151,12 +157,72 @@ export default function AdminTournamentPage() {
     ]);
   }
 
-  async function handleRefreshAutoSync() {
+  async function handleRefreshAutoSyncStatus() {
     try {
-      setIsRefreshingAutoSync(true);
-      await fetchTournamentDetailData();
+      setIsRefreshingAutoSyncStatus(true);
+      setAutoSyncError("");
+      await fetchAutoSyncStatus();
     } finally {
-      setIsRefreshingAutoSync(false);
+      setIsRefreshingAutoSyncStatus(false);
+    }
+  }
+
+  async function handleEnableAutoSync(event) {
+    event.preventDefault();
+
+    if (!autoSyncFilePath.trim()) {
+      setAutoSyncError("Paste the exact .Tournament file path first.");
+      return;
+    }
+
+    try {
+      setIsEnablingAutoSync(true);
+      setAutoSyncError("");
+      setAutoSyncMessage("");
+      const response = await api.post("/auto-sync/enable", {
+        tournament_id: Number(id),
+        file_path: autoSyncFilePath.trim(),
+      });
+      setAutoSyncStatus(response.data);
+      setAutoSyncMessage("Auto-sync enabled.");
+    } catch (error) {
+      setAutoSyncError(getApiErrorMessage(error, "Could not enable auto-sync."));
+    } finally {
+      setIsEnablingAutoSync(false);
+    }
+  }
+
+  async function handleDisableAutoSync() {
+    try {
+      setIsDisablingAutoSync(true);
+      setAutoSyncError("");
+      setAutoSyncMessage("");
+      const response = await api.post("/auto-sync/disable");
+      setAutoSyncStatus(response.data);
+      setAutoSyncMessage("Auto-sync disabled.");
+    } catch (error) {
+      setAutoSyncError(getApiErrorMessage(error, "Could not disable auto-sync."));
+    } finally {
+      setIsDisablingAutoSync(false);
+    }
+  }
+
+  async function handleRunAutoSyncNow() {
+    try {
+      setIsRunningAutoSync(true);
+      setAutoSyncError("");
+      setAutoSyncMessage("");
+      const response = await api.post("/auto-sync/run-now");
+      setAutoSyncStatus(response.data.status);
+      await fetchTournamentDetailData();
+      setAutoSyncMessage(
+        `Synced ${response.data.summary.players_imported} players, ${response.data.summary.rounds_imported} rounds, ${response.data.summary.matches_imported} matches, and ${response.data.summary.standings_imported} standings entries.`,
+      );
+    } catch (error) {
+      setAutoSyncError(getApiErrorMessage(error, "Could not run auto-sync."));
+      await fetchAutoSyncStatus();
+    } finally {
+      setIsRunningAutoSync(false);
     }
   }
 
@@ -168,6 +234,14 @@ export default function AdminTournamentPage() {
     const intervalId = window.setInterval(fetchAutoSyncStatus, 5000);
     return () => window.clearInterval(intervalId);
   }, []);
+
+  useEffect(() => {
+    if (!autoSyncStatus?.file_path) {
+      return;
+    }
+
+    setAutoSyncFilePath((currentPath) => currentPath || autoSyncStatus.file_path);
+  }, [autoSyncStatus?.file_path]);
 
   async function handleCreateNextRound() {
     const nextRoundNumber =
@@ -484,8 +558,17 @@ export default function AdminTournamentPage() {
           || cossyId.includes(normalizedStandingsSearch);
       })
     : standings;
-  const watchedFileName = autoSyncStatus?.watch_file
-    ? autoSyncStatus.watch_file.split(/[\\/]/).filter(Boolean).pop()
+  const watchedFileName = autoSyncStatus?.file_name
+    || (autoSyncStatus?.file_path
+      ? autoSyncStatus.file_path.split(/[\\/]/).filter(Boolean).pop()
+      : null);
+  const watchedFilePath = autoSyncStatus?.file_path || null;
+  const autoSyncTargetsCurrentTournament = Number(autoSyncStatus?.tournament_id) === Number(id);
+  const autoSyncTargetsAnotherTournament = Boolean(
+    autoSyncStatus?.enabled && autoSyncStatus?.tournament_id && !autoSyncTargetsCurrentTournament,
+  );
+  const autoSyncTargetLabel = autoSyncStatus?.tournament_id
+    ? `${autoSyncStatus.tournament_name || "Tournament"} #${autoSyncStatus.tournament_id}`
     : null;
   const lastSyncTime = autoSyncStatus?.last_sync_at
     ? new Date(autoSyncStatus.last_sync_at).toLocaleString()
@@ -624,83 +707,151 @@ export default function AdminTournamentPage() {
         </div>
       </section>
 
-      <section className="rounded-lg border border-blue-200 bg-white p-5 shadow-sm">
+      <section className="rounded-lg border border-yellow-700/40 bg-yellow-950/10 p-5 shadow-sm">
         <div>
-          <h2 className="text-xl font-semibold text-gray-950">Import KTS Tournament File</h2>
-        </div>
-        <p className="mt-2 text-sm text-gray-700">
-          Updates this tournament from the uploaded KTS file, replacing existing players, rounds, matches, and standings.
-        </p>
-
-        <form className="mt-4 grid gap-3 md:grid-cols-[1fr_auto]" onSubmit={handleImportTournamentFile}>
-          <label className="flex flex-col gap-1 text-sm font-medium text-gray-700">
-            .Tournament or XML file
-            <input
-              accept=".Tournament,.tournament,.xml,application/xml,text/xml"
-              className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-950 file:mr-3 file:rounded file:border-0 file:bg-gray-100 file:px-3 file:py-1 file:text-sm file:font-medium file:text-gray-700 hover:file:bg-gray-200"
-              onChange={(event) => {
-                setTournamentFile(event.target.files?.[0] || null);
-                setTournamentFileImportMessage("");
-                setTournamentFileImportError("");
-              }}
-              ref={tournamentFileInputRef}
-              type="file"
-            />
-          </label>
-
-          <button
-            className="self-end rounded-md bg-blue-700 px-4 py-2 text-sm font-medium text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:bg-gray-400"
-            disabled={isImportingTournamentFile}
-            type="submit"
-          >
-            {isImportingTournamentFile ? "Importing..." : "Import file"}
-          </button>
-        </form>
-
-        {tournamentFileImportMessage ? <p className="mt-3 text-sm font-medium text-green-700">{tournamentFileImportMessage}</p> : null}
-        {tournamentFileImportError ? <p className="mt-3 text-sm font-medium text-red-700">{tournamentFileImportError}</p> : null}
-      </section>
-
-      <section className="rounded-lg border border-yellow-700/40 bg-yellow-950/10 p-4 shadow-sm">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div>
-            <h2 className="text-base font-semibold text-gray-950">KTS auto-sync</h2>
-            <p className="mt-1 text-sm font-semibold text-gray-700">
-              Auto-sync: {autoSyncStatus?.enabled ? "Enabled" : "Disabled"}
-            </p>
-          </div>
-          <button
-            className="w-fit rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
-            disabled={isRefreshingAutoSync}
-            onClick={handleRefreshAutoSync}
-            type="button"
-          >
-            {isRefreshingAutoSync ? "Refreshing..." : "Refresh"}
-          </button>
-        </div>
-        <div className="mt-3 grid gap-3 text-sm text-gray-700 sm:grid-cols-2 lg:grid-cols-4">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Watched file</p>
-            <p className="mt-1 font-medium text-gray-950">{watchedFileName || "Not configured"}</p>
-          </div>
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Target tournament</p>
-            <p className="mt-1 font-medium text-gray-950">{autoSyncStatus?.tournament_id || "-"}</p>
-          </div>
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Last sync</p>
-            <p className="mt-1 font-medium text-gray-950">{lastSyncTime || "-"}</p>
-          </div>
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Status</p>
-            <p className="mt-1 font-medium text-gray-950">{autoSyncStatus?.last_status || "-"}</p>
-          </div>
-        </div>
-        {autoSyncStatus?.last_error ? (
-          <p className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">
-            {autoSyncStatus.last_error}
+          <p className="text-sm font-medium uppercase tracking-wide text-blue-700">KTS integration</p>
+          <h2 className="mt-1 text-xl font-semibold text-gray-950">KTS Tournament File</h2>
+          <p className="mt-2 text-sm text-gray-700">
+            Use a KTS .Tournament file either as a one-time upload or as a watched live-event source.
           </p>
-        ) : null}
+        </div>
+
+        <div className="mt-5 grid gap-4 lg:grid-cols-2">
+          <section className="rounded-lg border border-blue-200 bg-white p-4 shadow-sm">
+            <h3 className="text-base font-semibold text-gray-950">Manual Import</h3>
+            <p className="mt-1 text-sm text-gray-700">
+              Upload a .Tournament file once. Use this if you only need a one-time update.
+            </p>
+
+            <form className="mt-4 grid gap-3 md:grid-cols-[1fr_auto]" onSubmit={handleImportTournamentFile}>
+              <label className="flex flex-col gap-1 text-sm font-medium text-gray-700">
+                .Tournament or XML file
+                <input
+                  accept=".Tournament,.tournament,.xml,application/xml,text/xml"
+                  className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-950 file:mr-3 file:rounded file:border-0 file:bg-gray-100 file:px-3 file:py-1 file:text-sm file:font-medium file:text-gray-700 hover:file:bg-gray-200"
+                  onChange={(event) => {
+                    setTournamentFile(event.target.files?.[0] || null);
+                    setTournamentFileImportMessage("");
+                    setTournamentFileImportError("");
+                  }}
+                  ref={tournamentFileInputRef}
+                  type="file"
+                />
+              </label>
+
+              <button
+                className="self-end rounded-md bg-blue-700 px-4 py-2 text-sm font-medium text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:bg-gray-400"
+                disabled={isImportingTournamentFile}
+                type="submit"
+              >
+                {isImportingTournamentFile ? "Importing..." : "Import file"}
+              </button>
+            </form>
+
+            {tournamentFileImportMessage ? <p className="mt-3 text-sm font-medium text-green-700">{tournamentFileImportMessage}</p> : null}
+            {tournamentFileImportError ? <p className="mt-3 text-sm font-medium text-red-700">{tournamentFileImportError}</p> : null}
+          </section>
+
+          <section className="rounded-lg border border-yellow-700/40 bg-yellow-50/30 p-4 shadow-sm">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h3 className="text-base font-semibold text-gray-950">Auto-Sync</h3>
+                <p className="mt-1 text-sm text-gray-700">
+                  Watch the original KTS file on this computer and automatically import changes during a live event.
+                </p>
+                <p className="mt-2 text-xs font-medium text-gray-500">
+                  For the web version, paste the full file path. A desktop version can later use a file picker.
+                </p>
+                <p className="mt-2 text-sm font-semibold text-gray-700">
+                  Status: {autoSyncStatus?.enabled ? "Enabled" : "Disabled"}
+                </p>
+              </div>
+              <button
+                className="w-fit rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
+                disabled={isRefreshingAutoSyncStatus}
+                onClick={handleRefreshAutoSyncStatus}
+                type="button"
+              >
+                {isRefreshingAutoSyncStatus ? "Refreshing..." : "Refresh Status"}
+              </button>
+            </div>
+
+            {autoSyncTargetsAnotherTournament ? (
+              <p className="mt-3 rounded-md border border-yellow-500/50 bg-yellow-100/60 px-3 py-2 text-sm font-semibold text-yellow-700">
+                Auto-sync is currently targeting {autoSyncTargetLabel}.
+              </p>
+            ) : null}
+
+            <form className="mt-4 grid gap-3" onSubmit={handleEnableAutoSync}>
+              <label className="flex flex-col gap-1 text-sm font-medium text-gray-700">
+                .Tournament file path
+                <input
+                  className="rounded-md border border-gray-300 px-3 py-2 text-sm text-gray-950 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
+                  onChange={(event) => {
+                    setAutoSyncFilePath(event.target.value);
+                    setAutoSyncMessage("");
+                    setAutoSyncError("");
+                  }}
+                  placeholder="C:\Users\...\Competitive Tournament (ID ...).Tournament"
+                  type="text"
+                  value={autoSyncFilePath}
+                />
+              </label>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  className="rounded-md bg-blue-700 px-4 py-2 text-sm font-medium text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:bg-gray-400"
+                  disabled={isEnablingAutoSync}
+                  type="submit"
+                >
+                  {isEnablingAutoSync ? "Enabling..." : "Enable Auto-Sync"}
+                </button>
+                <button
+                  className="rounded-md bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-gray-700 disabled:cursor-not-allowed disabled:bg-gray-400"
+                  disabled={!autoSyncStatus?.enabled || isRunningAutoSync}
+                  onClick={handleRunAutoSyncNow}
+                  type="button"
+                >
+                  {isRunningAutoSync ? "Syncing..." : "Sync Now"}
+                </button>
+                <button
+                  className="rounded-md border border-red-200 bg-white px-3 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={!autoSyncStatus?.enabled || isDisablingAutoSync}
+                  onClick={handleDisableAutoSync}
+                  type="button"
+                >
+                  {isDisablingAutoSync ? "Disabling..." : "Disable Auto-Sync"}
+                </button>
+              </div>
+            </form>
+
+            <div className="mt-4 grid gap-3 text-sm text-gray-700 sm:grid-cols-2">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Watched file</p>
+                <p className="mt-1 font-medium text-gray-950">{watchedFileName || "Not configured"}</p>
+                {watchedFilePath ? <p className="mt-1 break-all text-xs text-gray-500">{watchedFilePath}</p> : null}
+              </div>
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Target tournament</p>
+                <p className="mt-1 font-medium text-gray-950">{autoSyncTargetLabel || `${tournament?.name || "This tournament"} #${id}`}</p>
+              </div>
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Last sync</p>
+                <p className="mt-1 font-medium text-gray-950">{lastSyncTime || "-"}</p>
+              </div>
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Status</p>
+                <p className="mt-1 font-medium text-gray-950">{autoSyncStatus?.last_status || "-"}</p>
+              </div>
+            </div>
+            {autoSyncMessage ? <p className="mt-3 text-sm font-medium text-green-700">{autoSyncMessage}</p> : null}
+            {autoSyncError ? <p className="mt-3 text-sm font-medium text-red-700">{autoSyncError}</p> : null}
+            {autoSyncStatus?.last_error ? (
+              <p className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">
+                {autoSyncStatus.last_error}
+              </p>
+            ) : null}
+          </section>
+        </div>
       </section>
 
       <section className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
