@@ -6,9 +6,41 @@ from sqlalchemy import create_engine, event, inspect, text
 from sqlalchemy.engine import Engine, make_url
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
+PROCESS_DATABASE_URL = os.environ.get("DATABASE_URL")
 load_dotenv()
 
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./data/app.db")
+DEFAULT_DATABASE_URL = "sqlite:///./data/app.db"
+APP_DATA_DIR = os.getenv("APP_DATA_DIR")
+
+
+def sqlite_url_for_path(database_path: Path) -> str:
+    normalized_path = str(database_path.expanduser().resolve()).replace("\\", "/")
+    return f"sqlite:///{normalized_path}"
+
+
+def ensure_app_data_dir(app_data_dir: str | None) -> Path | None:
+    if not app_data_dir:
+        return None
+
+    app_data_path = Path(app_data_dir).expanduser()
+    app_data_path.mkdir(parents=True, exist_ok=True)
+    (app_data_path / "logs").mkdir(exist_ok=True)
+
+    settings_path = app_data_path / "settings.json"
+    if not settings_path.exists():
+        settings_path.write_text("{}\n", encoding="utf-8")
+
+    return app_data_path
+
+
+APP_DATA_PATH = ensure_app_data_dir(APP_DATA_DIR)
+
+if PROCESS_DATABASE_URL:
+    DATABASE_URL = PROCESS_DATABASE_URL
+elif APP_DATA_PATH:
+    DATABASE_URL = sqlite_url_for_path(APP_DATA_PATH / "app.db")
+else:
+    DATABASE_URL = os.getenv("DATABASE_URL", DEFAULT_DATABASE_URL)
 
 
 def create_database_engine(database_url: str) -> Engine:
@@ -24,6 +56,13 @@ def create_database_engine(database_url: str) -> Engine:
 
 
 engine = create_database_engine(DATABASE_URL)
+
+
+def get_database_location() -> str:
+    if engine.url.drivername.startswith("sqlite"):
+        return str(engine.url.database)
+
+    return engine.url.render_as_string(hide_password=True)
 
 
 @event.listens_for(engine, "connect")

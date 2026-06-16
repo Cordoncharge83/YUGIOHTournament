@@ -1,7 +1,9 @@
+import logging
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.database import create_db_tables
+from app.database import APP_DATA_PATH, create_db_tables, get_database_location
 from app.kts_watcher import kts_auto_sync_service
 from app.routes import auto_sync, matches, player_profiles, players, public, rounds, tournaments
 from app.schemas import HealthCheck
@@ -22,9 +24,14 @@ app.include_router(player_profiles.router)
 app.include_router(public.router)
 app.include_router(auto_sync.router)
 
+logger = logging.getLogger(__name__)
+
 
 @app.on_event("startup")
 def on_startup() -> None:
+    if APP_DATA_PATH:
+        logger.info("App data directory: %s", APP_DATA_PATH)
+    logger.info("Database location: %s", get_database_location())
     create_db_tables()
 
 

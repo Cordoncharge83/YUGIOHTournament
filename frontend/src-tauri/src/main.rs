@@ -1,6 +1,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use std::{
+    env,
+    fs,
     net::{SocketAddr, TcpStream},
     path::PathBuf,
     process::{Child, Command, Stdio},
@@ -54,6 +56,15 @@ fn start_backend_for_dev() -> Option<Child> {
 
         let backend_dir = repo_root().join("backend");
         let venv_python = backend_dir.join(".venv").join("Scripts").join("python.exe");
+        let app_data_dir = desktop_app_data_dir();
+        if let Err(error) = ensure_desktop_app_data_dir(&app_data_dir) {
+            eprintln!(
+                "Could not prepare desktop app data directory {}: {error}",
+                app_data_dir.display()
+            );
+            return None;
+        }
+        let database_url = sqlite_database_url(&app_data_dir.join("app.db"));
 
         let mut command = if venv_python.exists() {
             let mut command = Command::new(venv_python);
@@ -67,6 +78,8 @@ fn start_backend_for_dev() -> Option<Child> {
             .arg("app.main:app")
             .arg("--reload")
             .current_dir(&backend_dir)
+            .env("APP_DATA_DIR", &app_data_dir)
+            .env("DATABASE_URL", &database_url)
             .stdin(Stdio::null())
             .stdout(Stdio::inherit())
             .stderr(Stdio::inherit());
@@ -76,6 +89,11 @@ fn start_backend_for_dev() -> Option<Child> {
                 println!(
                     "Started FastAPI backend dev process from {} on http://127.0.0.1:8000.",
                     backend_dir.display()
+                );
+                println!(
+                    "Desktop app data directory: {}. SQLite database: {}.",
+                    app_data_dir.display(),
+                    app_data_dir.join("app.db").display()
                 );
                 wait_for_backend_port();
                 Some(child)
@@ -145,4 +163,49 @@ fn repo_root() -> PathBuf {
         .and_then(|frontend_dir| frontend_dir.parent())
         .map(PathBuf::from)
         .expect("src-tauri must live inside the frontend directory")
+}
+
+fn desktop_app_data_dir() -> PathBuf {
+    #[cfg(windows)]
+    {
+        return env::var_os("LOCALAPPDATA")
+            .map(PathBuf::from)
+            .unwrap_or_else(env::temp_dir)
+            .join("YuGiOhTournamentManager");
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        return env::var_os("HOME")
+            .map(PathBuf::from)
+            .unwrap_or_else(env::temp_dir)
+            .join("Library")
+            .join("Application Support")
+            .join("YuGiOhTournamentManager");
+    }
+
+    #[cfg(all(not(windows), not(target_os = "macos")))]
+    {
+        return env::var_os("XDG_DATA_HOME")
+            .map(PathBuf::from)
+            .or_else(|| env::var_os("HOME").map(|home| PathBuf::from(home).join(".local").join("share")))
+            .unwrap_or_else(env::temp_dir)
+            .join("YuGiOhTournamentManager");
+    }
+}
+
+fn ensure_desktop_app_data_dir(app_data_dir: &PathBuf) -> std::io::Result<()> {
+    fs::create_dir_all(app_data_dir.join("logs"))?;
+
+    let settings_path = app_data_dir.join("settings.json");
+    if !settings_path.exists() {
+        fs::write(settings_path, "{}\n")?;
+    }
+
+    Ok(())
+}
+
+fn sqlite_database_url(database_path: &PathBuf) -> String {
+    let normalized_path = database_path.to_string_lossy().replace('\\', "/");
+    format!("sqlite:///{normalized_path}")
 }

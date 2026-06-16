@@ -234,6 +234,23 @@ uvicorn app.main:app --reload
 
 The launcher prefers `backend/.venv/Scripts/python.exe -m uvicorn` when the virtual environment exists. If something is already listening on `127.0.0.1:8000`, Tauri assumes the backend is already running and does not start a duplicate process. When the Tauri app exits, it stops the backend process it started.
 
+When Tauri starts the backend, it passes desktop app-data environment variables to FastAPI:
+
+```text
+APP_DATA_DIR=%LOCALAPPDATA%\YuGiOhTournamentManager
+DATABASE_URL=sqlite:///%LOCALAPPDATA%/YuGiOhTournamentManager/app.db
+```
+
+The backend creates the app-data directory automatically, including:
+
+```text
+app.db
+logs/
+settings.json
+```
+
+Manual backend development still uses `DATABASE_URL=sqlite:///./data/app.db` from `backend/.env`. The desktop launcher sets its own `DATABASE_URL`, so the Tauri app stores data in the Windows local app data directory instead of the repository `data/` folder.
+
 The normal web workflow remains unchanged:
 
 ```bash
