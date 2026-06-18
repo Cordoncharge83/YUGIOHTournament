@@ -22,11 +22,10 @@ function formatAverage(value) {
 }
 
 const sortableColumns = [
-  { key: "player", label: "Player", className: "w-[32%] px-2 py-2" },
-  { key: "cossyId", label: "COSSY ID", className: "w-[16%] px-2 py-2" },
+  { key: "player", label: "Player", className: "w-[52%] px-2 py-2" },
   { key: "tournaments", label: "Tournaments", className: "w-[16%] px-2 py-2 text-right" },
-  { key: "points", label: "Points", className: "w-[24%] px-2 py-2" },
-  { key: "bestRank", label: "Best Rank", className: "w-[12%] px-2 py-2 text-right" },
+  { key: "points", label: "Points", className: "w-[18%] px-2 py-2 text-right" },
+  { key: "bestRank", label: "Best Rank", className: "w-[14%] px-2 py-2 text-right" },
 ];
 
 function compareProfiles(profileA, profileB, sortKey) {
@@ -235,7 +234,7 @@ export default function PlayerProfilesPage() {
                       <TableHead className={column.className} key={column.key}>
                         <button
                           className={`flex min-w-0 items-center gap-1 font-semibold uppercase tracking-wide text-slate-400 hover:text-slate-100 ${
-                            column.key === "tournaments" || column.key === "bestRank" ? "ml-auto justify-end" : ""
+                            column.key === "tournaments" || column.key === "points" || column.key === "bestRank" ? "ml-auto justify-end" : ""
                           }`}
                           onClick={() => updateSort(column.key)}
                           type="button"
@@ -266,12 +265,9 @@ export default function PlayerProfilesPage() {
                             {profile.display_name}
                           </button>
                         </TableCell>
-                        <TableCell className="max-w-0 truncate px-2 text-slate-300" title={profile.cossy_id || "-"}>
-                          {profile.cossy_id || "-"}
-                        </TableCell>
                         <TableCell className="whitespace-nowrap px-2 text-right text-slate-300">{profile.tournaments_played}</TableCell>
                         <TableCell
-                          className="max-w-0 truncate px-2 text-slate-300"
+                          className="whitespace-nowrap px-2 text-right text-slate-300"
                           title={`${profile.total_points} (${formatAverage(profile.average_points)} avg)`}
                         >
                           {profile.total_points} ({formatAverage(profile.average_points)} avg)

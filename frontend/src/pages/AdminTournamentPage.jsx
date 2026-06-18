@@ -1077,7 +1077,6 @@ export default function AdminTournamentPage() {
                 <TableRow>
                   <TableHead className="whitespace-nowrap">Rank</TableHead>
                   <TableHead className="min-w-48">Player</TableHead>
-                  <TableHead className="whitespace-nowrap">COSSY ID</TableHead>
                   <TableHead className="whitespace-nowrap">Points</TableHead>
                   <TableHead className="whitespace-nowrap">Tiebreaker</TableHead>
                 </TableRow>
@@ -1089,7 +1088,6 @@ export default function AdminTournamentPage() {
                     <TableCell className="font-medium text-slate-50">
                       {formatPlayerDisplayName(standing.short_name || standing.full_name)}
                     </TableCell>
-                    <TableCell className="whitespace-nowrap text-slate-300">{standing.cossy_id || "-"}</TableCell>
                     <TableCell className="whitespace-nowrap text-slate-300">{standing.points}</TableCell>
                     <TableCell className="whitespace-nowrap text-slate-300">{standing.tiebreaker || "-"}</TableCell>
                   </TableRow>
