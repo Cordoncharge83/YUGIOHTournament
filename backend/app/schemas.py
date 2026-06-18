@@ -4,6 +4,7 @@ from typing import Literal
 from pydantic import BaseModel
 
 MatchResultStatus = Literal["PLAYER_ONE_WIN", "PLAYER_TWO_WIN", "DRAW", "DOUBLE_LOSS", "UNREPORTED"]
+PublishStatus = Literal["draft", "published", "unpublished"]
 
 
 class HealthCheck(BaseModel):
@@ -38,6 +39,11 @@ class TournamentRead(BaseModel):
     location: str | None
     current_round_id: int | None
     kts_file_path: str | None
+    publish_status: PublishStatus
+    public_id: str | None
+    public_url: str | None
+    published_at: datetime | None
+    last_published_at: datetime | None
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -55,6 +61,16 @@ class PublicTournamentSummaryRead(BaseModel):
 
 class TournamentCurrentRoundUpdate(BaseModel):
     round_id: int
+
+
+class TournamentPublishStatusRead(BaseModel):
+    publish_status: PublishStatus
+    public_id: str | None
+    public_url: str | None
+    published_at: datetime | None
+    last_published_at: datetime | None
+
+    model_config = {"from_attributes": True}
 
 
 class RoundCsvImportSummary(BaseModel):
@@ -227,3 +243,37 @@ class PublicTournamentRead(BaseModel):
     rounds: list[RoundRead]
     matches: list[PublicMatchRead]
     standings: list[PublicStandingRead]
+
+
+class PublicSnapshotPairingRead(BaseModel):
+    table_number: int | None
+    player_one_name: str
+    player_two_name: str | None
+    result_status: MatchResultStatus
+    notes: str | None
+
+
+class PublicSnapshotStandingRead(BaseModel):
+    rank: int
+    player_name: str
+    points: int
+    tiebreaker: str | None
+
+
+class PublicSnapshotMetadataRead(BaseModel):
+    total_players: int
+    total_rounds: int
+    unreported_match_count: int
+
+
+class PublicTournamentSnapshotRead(BaseModel):
+    tournament_id: int
+    tournament_name: str
+    location: str | None
+    current_round_number: int | None
+    current_round_name: str | None
+    last_updated_at: datetime
+    public_display_status: str | None
+    current_round_pairings: list[PublicSnapshotPairingRead]
+    standings: list[PublicSnapshotStandingRead]
+    metadata: PublicSnapshotMetadataRead

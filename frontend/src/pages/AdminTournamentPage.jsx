@@ -70,6 +70,10 @@ export default function AdminTournamentPage() {
   const [autoSyncFilePath, setAutoSyncFilePath] = useState("");
   const [autoSyncMessage, setAutoSyncMessage] = useState("");
   const [autoSyncError, setAutoSyncError] = useState("");
+  const [isPublishingTournament, setIsPublishingTournament] = useState(false);
+  const [isUnpublishingTournament, setIsUnpublishingTournament] = useState(false);
+  const [publishMessage, setPublishMessage] = useState("");
+  const [publishError, setPublishError] = useState("");
   const [isEnablingAutoSync, setIsEnablingAutoSync] = useState(false);
   const [isDisablingAutoSync, setIsDisablingAutoSync] = useState(false);
   const [isRunningAutoSync, setIsRunningAutoSync] = useState(false);
@@ -501,6 +505,36 @@ export default function AdminTournamentPage() {
     }
   }
 
+  async function handlePublishTournament() {
+    try {
+      setIsPublishingTournament(true);
+      setPublishError("");
+      setPublishMessage("");
+      const response = await api.post(`/tournaments/${id}/publish`);
+      setTournament((currentTournament) => ({ ...currentTournament, ...response.data }));
+      setPublishMessage("Tournament marked as published locally.");
+    } catch (error) {
+      setPublishError(getApiErrorMessage(error, "Could not publish tournament."));
+    } finally {
+      setIsPublishingTournament(false);
+    }
+  }
+
+  async function handleUnpublishTournament() {
+    try {
+      setIsUnpublishingTournament(true);
+      setPublishError("");
+      setPublishMessage("");
+      const response = await api.post(`/tournaments/${id}/unpublish`);
+      setTournament((currentTournament) => ({ ...currentTournament, ...response.data }));
+      setPublishMessage("Tournament unpublished locally.");
+    } catch (error) {
+      setPublishError(getApiErrorMessage(error, "Could not unpublish tournament."));
+    } finally {
+      setIsUnpublishingTournament(false);
+    }
+  }
+
   function updateImportRoundNumber(value) {
     setImportRoundNumber(value);
     setImportPreview(null);
@@ -727,6 +761,16 @@ export default function AdminTournamentPage() {
     : savedKtsFilePath
       ? "border-amber-400/35 bg-amber-400/10 text-amber-200"
       : "border-gray-500/50 bg-gray-500/15 text-gray-300";
+  const publishStatus = tournament?.publish_status || "draft";
+  const publishStatusLabel = publishStatus.charAt(0).toUpperCase() + publishStatus.slice(1);
+  const publishBadgeClass = publishStatus === "published"
+    ? "border-emerald-400/50 bg-emerald-500/15 text-emerald-200"
+    : publishStatus === "unpublished"
+      ? "border-amber-400/35 bg-amber-400/10 text-amber-200"
+      : "border-slate-600 bg-slate-800 text-slate-300";
+  const publishTimestamp = tournament?.last_published_at
+    ? new Date(tournament.last_published_at).toLocaleString()
+    : null;
 
   useEffect(() => {
     if (rounds.length === 0) {
@@ -861,6 +905,53 @@ export default function AdminTournamentPage() {
           </div>
         </div>
       </section>
+
+      <Card className="border-slate-700/70 bg-slate-950/85">
+        <CardHeader className="flex-row items-start justify-between gap-4 space-y-0">
+          <div>
+            <CardTitle>Public Publishing</CardTitle>
+            <CardDescription>Local publish state for future hosted public pages.</CardDescription>
+          </div>
+          <Badge className={publishBadgeClass}>{publishStatusLabel}</Badge>
+        </CardHeader>
+        <CardContent>
+          <div className="grid gap-3 text-sm text-slate-300 md:grid-cols-3">
+            <div>
+              <p className="font-semibold text-slate-50">Public ID</p>
+              <p className="mt-1 break-all">{tournament?.public_id || "-"}</p>
+            </div>
+            <div>
+              <p className="font-semibold text-slate-50">Public URL</p>
+              <p className="mt-1 break-all">{tournament?.public_url || "Not configured"}</p>
+            </div>
+            <div>
+              <p className="font-semibold text-slate-50">Last Published</p>
+              <p className="mt-1">{publishTimestamp || "-"}</p>
+            </div>
+          </div>
+
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Button
+              disabled={isPublishingTournament || isUnpublishingTournament || publishStatus === "published"}
+              onClick={handlePublishTournament}
+              type="button"
+            >
+              {isPublishingTournament ? "Publishing..." : "Publish Tournament"}
+            </Button>
+            <Button
+              disabled={isPublishingTournament || isUnpublishingTournament || publishStatus !== "published"}
+              onClick={handleUnpublishTournament}
+              type="button"
+              variant="outline"
+            >
+              {isUnpublishingTournament ? "Unpublishing..." : "Unpublish Tournament"}
+            </Button>
+          </div>
+
+          {publishMessage ? <p className="mt-3 text-sm font-medium text-emerald-200">{publishMessage}</p> : null}
+          {publishError ? <p className="mt-3 text-sm font-medium text-rose-300">{publishError}</p> : null}
+        </CardContent>
+      </Card>
 
       <section className="rounded-lg border border-slate-700/70 bg-slate-950/85 p-5 shadow-sm">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">

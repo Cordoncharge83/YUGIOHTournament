@@ -11,11 +11,15 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import Match, Player, PlayerProfile, Round, Standing, Tournament
 from app.player_profiles import get_or_create_player_profile
+from app.publishing import publish_tournament, unpublish_tournament
+from app.public_snapshots import build_public_tournament_snapshot
 from app.schemas import (
+    PublicTournamentSnapshotRead,
     RoundCsvImportSummary,
     RoundCsvPreviewSummary,
     StandingRead,
     StandingsCsvImportSummary,
+    TournamentPublishStatusRead,
     TournamentCreate,
     TournamentCurrentRoundUpdate,
     TournamentFileImportSummary,
@@ -568,6 +572,42 @@ def list_tournament_standings(tournament_id: int, db: Session = Depends(get_db))
 
     statement = select(Standing).where(Standing.tournament_id == tournament_id).order_by(Standing.rank)
     return list(db.scalars(statement))
+
+
+@router.get("/{tournament_id}/public-snapshot", response_model=PublicTournamentSnapshotRead)
+def get_public_tournament_snapshot(tournament_id: int, db: Session = Depends(get_db)) -> PublicTournamentSnapshotRead:
+    tournament = db.get(Tournament, tournament_id)
+    if tournament is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
+
+    return build_public_tournament_snapshot(db, tournament)
+
+
+@router.get("/{tournament_id}/publish-status", response_model=TournamentPublishStatusRead)
+def get_tournament_publish_status(tournament_id: int, db: Session = Depends(get_db)) -> Tournament:
+    tournament = db.get(Tournament, tournament_id)
+    if tournament is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
+
+    return tournament
+
+
+@router.post("/{tournament_id}/publish", response_model=TournamentPublishStatusRead)
+def publish_tournament_route(tournament_id: int, db: Session = Depends(get_db)) -> Tournament:
+    tournament = db.get(Tournament, tournament_id)
+    if tournament is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
+
+    return publish_tournament(db, tournament)
+
+
+@router.post("/{tournament_id}/unpublish", response_model=TournamentPublishStatusRead)
+def unpublish_tournament_route(tournament_id: int, db: Session = Depends(get_db)) -> Tournament:
+    tournament = db.get(Tournament, tournament_id)
+    if tournament is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
+
+    return unpublish_tournament(db, tournament)
 
 
 @router.patch("/{tournament_id}/current-round", response_model=TournamentRead)

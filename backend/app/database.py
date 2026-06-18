@@ -93,6 +93,22 @@ def create_db_tables() -> None:
         if "kts_file_path" not in tournament_columns:
             with engine.begin() as connection:
                 connection.execute(text("ALTER TABLE tournaments ADD COLUMN kts_file_path TEXT"))
+        if "publish_status" not in tournament_columns:
+            with engine.begin() as connection:
+                connection.execute(text("ALTER TABLE tournaments ADD COLUMN publish_status VARCHAR(32) NOT NULL DEFAULT 'draft'"))
+        if "public_id" not in tournament_columns:
+            with engine.begin() as connection:
+                connection.execute(text("ALTER TABLE tournaments ADD COLUMN public_id VARCHAR(128)"))
+                connection.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_tournaments_public_id ON tournaments (public_id)"))
+        if "public_url" not in tournament_columns:
+            with engine.begin() as connection:
+                connection.execute(text("ALTER TABLE tournaments ADD COLUMN public_url TEXT"))
+        if "published_at" not in tournament_columns:
+            with engine.begin() as connection:
+                connection.execute(text("ALTER TABLE tournaments ADD COLUMN published_at DATETIME"))
+        if "last_published_at" not in tournament_columns:
+            with engine.begin() as connection:
+                connection.execute(text("ALTER TABLE tournaments ADD COLUMN last_published_at DATETIME"))
     if "matches" in inspector.get_table_names():
         match_columns = {column["name"] for column in inspector.get_columns("matches")}
         if "result_status" not in match_columns:

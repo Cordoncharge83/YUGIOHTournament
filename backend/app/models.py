@@ -16,6 +16,11 @@ class Tournament(Base):
     location: Mapped[str | None] = mapped_column(String(255))
     current_round_id: Mapped[int | None] = mapped_column(ForeignKey("rounds.id"))
     kts_file_path: Mapped[str | None] = mapped_column(Text)
+    publish_status: Mapped[str] = mapped_column(String(32), nullable=False, default="draft", server_default="draft")
+    public_id: Mapped[str | None] = mapped_column(String(128), unique=True, index=True)
+    public_url: Mapped[str | None] = mapped_column(Text)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     players: Mapped[list[Player]] = relationship(back_populates="tournament")
