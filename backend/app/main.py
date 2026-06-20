@@ -5,13 +5,20 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import APP_DATA_PATH, create_db_tables, get_database_location
 from app.kts_watcher import kts_auto_sync_service
-from app.routes import auto_sync, matches, player_profiles, players, public, rounds, tournaments
+from app.routes import auto_sync, matches, player_profiles, players, public, rounds, settings, tournaments
 from app.schemas import HealthCheck
 
 app = FastAPI(title="Yu-Gi-Oh Tournament Manager API")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://tauri.localhost",
+        "https://tauri.localhost",
+        "tauri://localhost",
+    ],
+    allow_origin_regex=r"^https?://localhost(?::\d+)?$|^https?://127\.0\.0\.1(?::\d+)?$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -23,6 +30,7 @@ app.include_router(matches.router)
 app.include_router(player_profiles.router)
 app.include_router(public.router)
 app.include_router(auto_sync.router)
+app.include_router(settings.router)
 
 logger = logging.getLogger(__name__)
 

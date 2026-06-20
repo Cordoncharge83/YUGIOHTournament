@@ -79,6 +79,20 @@ class PublicPublishingConfigRead(BaseModel):
     configured: bool
     service_url: str | None
     site_url: str | None
+    publish_key_configured: bool = False
+
+
+class PublishingSettingsRead(BaseModel):
+    configured: bool
+    service_url: str | None
+    site_url: str | None
+    publish_key_configured: bool
+
+
+class PublishingSettingsUpdate(BaseModel):
+    service_url: str
+    site_url: str
+    publish_key: str | None = None
 
 
 class RoundCsvImportSummary(BaseModel):

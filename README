@@ -116,7 +116,22 @@ The backend creates the app-data directory automatically, including:
 app.db
 logs/
 settings.json
+publishing.env.example
 ```
+
+For installed release builds, hosted publishing is configured in the app:
+
+```text
+Admin dashboard -> Publishing Settings
+```
+
+The Publishing API URL and Public Page URL are prefilled with the shipped Cloudflare defaults. The organizer enters the publish key once, and the app stores it locally in:
+
+```text
+%LOCALAPPDATA%\YuGiOhTournamentManager\settings.json
+```
+
+The publish key is used only by the local backend and is not returned to the frontend after saving. Dev mode continues to support `backend/.env`. `%LOCALAPPDATA%\YuGiOhTournamentManager\publishing.env` remains a backend environment fallback for debugging, but it is no longer required for normal release use.
 
 ---
 

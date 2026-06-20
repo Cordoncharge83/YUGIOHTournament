@@ -970,13 +970,18 @@ export default function AdminTournamentPage() {
             </div>
             <div>
               <p className="font-semibold text-slate-50">Configuration</p>
-              <p className="mt-1">{publicPublishingConfigured ? "Ready" : "Missing public service URL, public site URL, or publish key"}</p>
+              <p className="mt-1">{publicPublishingConfigured ? "Ready" : "Configure publishing settings before publishing"}</p>
             </div>
           </div>
 
           <div className="mt-4 flex flex-wrap gap-2">
+            {!publicPublishingConfigured ? (
+              <Button asChild type="button" variant="outline">
+                <Link to="/admin/settings/publishing">Configure publishing settings</Link>
+              </Button>
+            ) : null}
             <Button
-              disabled={isPublishingTournament || isUnpublishingTournament || publishStatus === "published"}
+              disabled={isPublishingTournament || isUnpublishingTournament || publishStatus === "published" || !publicPublishingConfigured}
               onClick={handlePublishTournament}
               type="button"
             >

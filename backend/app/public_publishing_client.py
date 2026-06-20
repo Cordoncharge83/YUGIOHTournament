@@ -6,6 +6,8 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 
+from app.local_settings import read_publishing_settings
+
 
 PUBLISH_TIMEOUT_SECONDS = 15
 PUBLISH_USER_AGENT = "YuGiOhTournamentManager/1.0"
@@ -32,10 +34,11 @@ class PublicPublishingConfig:
 
 
 def get_public_publishing_config() -> PublicPublishingConfig:
+    local_settings = read_publishing_settings()
     return PublicPublishingConfig(
-        service_url=normalize_service_url(os.getenv("PUBLIC_SERVICE_URL")),
-        site_url=normalize_service_url(os.getenv("PUBLIC_SITE_URL")),
-        publish_key=os.getenv("PUBLIC_PUBLISH_KEY") or None,
+        service_url=normalize_service_url(local_settings.get("service_url")) or normalize_service_url(os.getenv("PUBLIC_SERVICE_URL")),
+        site_url=normalize_service_url(local_settings.get("site_url")) or normalize_service_url(os.getenv("PUBLIC_SITE_URL")),
+        publish_key=local_settings.get("publish_key") or os.getenv("PUBLIC_PUBLISH_KEY") or None,
     )
 
 

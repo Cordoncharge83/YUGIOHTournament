@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { Link } from "react-router-dom";
-import { CalendarDays, MapPin, Plus, RefreshCw, Share2, Trash2, Users } from "lucide-react";
+import { CalendarDays, MapPin, Plus, RefreshCw, Settings, Share2, Trash2, Users } from "lucide-react";
 
-import api from "../api/client";
+import api, { getApiErrorMessage } from "../api/client";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
@@ -32,8 +32,8 @@ export default function AdminPage() {
       setError("");
       const response = await api.get("/tournaments");
       setTournaments(response.data);
-    } catch {
-      setError("Could not load tournaments.");
+    } catch (error) {
+      setError(getApiErrorMessage(error, "Could not load tournaments."));
     } finally {
       setIsLoading(false);
     }
@@ -61,8 +61,8 @@ export default function AdminPage() {
       setName("");
       setLocation("");
       await fetchTournaments();
-    } catch {
-      setError("Could not create tournament.");
+    } catch (error) {
+      setError(getApiErrorMessage(error, "Could not create tournament."));
     } finally {
       setIsCreating(false);
     }
@@ -93,8 +93,8 @@ export default function AdminPage() {
       setTournaments((currentTournaments) => currentTournaments.filter((currentTournament) => currentTournament.id !== tournament.id));
       setShareTournament((currentShareTournament) => (currentShareTournament?.id === tournament.id ? null : currentShareTournament));
       setCopyMessage("");
-    } catch {
-      setError("Could not delete tournament.");
+    } catch (error) {
+      setError(getApiErrorMessage(error, "Could not delete tournament."));
     } finally {
       setDeletingTournamentId(null);
     }
@@ -110,12 +110,20 @@ export default function AdminPage() {
             Create, manage, and share local Yu-Gi-Oh tournament events.
           </p>
         </div>
-        <Button asChild className="self-start sm:self-auto" variant="outline">
-          <Link to="/admin/players">
-            <Users className="h-4 w-4" />
-            Community Players
-          </Link>
-        </Button>
+        <div className="flex flex-wrap gap-2 self-start sm:self-auto">
+          <Button asChild variant="outline">
+            <Link to="/admin/settings/publishing">
+              <Settings className="h-4 w-4" />
+              Publishing Settings
+            </Link>
+          </Button>
+          <Button asChild variant="outline">
+            <Link to="/admin/players">
+              <Users className="h-4 w-4" />
+              Community Players
+            </Link>
+          </Button>
+        </div>
       </header>
 
       <Card className="border-slate-700/70 bg-slate-950/85">
