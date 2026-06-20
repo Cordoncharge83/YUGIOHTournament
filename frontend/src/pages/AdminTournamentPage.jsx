@@ -493,6 +493,11 @@ export default function AdminTournamentPage() {
   }
 
   async function handleCopyPublicLink() {
+    if (!displayPublicUrl) {
+      setCopyMessage("Publish first");
+      return;
+    }
+
     try {
       await navigator.clipboard.writeText(displayPublicUrl);
       setCopyMessage("Copied");
@@ -502,6 +507,11 @@ export default function AdminTournamentPage() {
   }
 
   async function handleOpenPublicPage(event) {
+    if (!displayPublicUrl) {
+      event.preventDefault();
+      return;
+    }
+
     if (!isTauriApp()) {
       return;
     }
@@ -696,28 +706,7 @@ export default function AdminTournamentPage() {
     }
   }
 
-  async function handleOpenHostedPublicPage(event) {
-    if (!tournament?.public_url) {
-      return;
-    }
-
-    if (!isTauriApp()) {
-      return;
-    }
-
-    event.preventDefault();
-
-    try {
-      const { openUrl } = await import("@tauri-apps/plugin-opener");
-      await openUrl(tournament.public_url);
-    } catch {
-      window.open(tournament.public_url, "_blank", "noopener,noreferrer");
-    }
-  }
-
-  const publicPath = `/t/${id}`;
-  const localPublicUrl = `${window.location.origin}${publicPath}`;
-  const displayPublicUrl = tournament?.public_url || localPublicUrl;
+  const displayPublicUrl = tournament?.public_url || null;
   const playerDisplayNames = Object.fromEntries(players.map((player) => [player.id, formatPlayerDisplayName(player.name)]));
   const roundNumbers = Object.fromEntries(rounds.map((round) => [round.id, round.number]));
   const sortedRounds = [...rounds].sort((firstRound, secondRound) => firstRound.number - secondRound.number);
@@ -913,13 +902,14 @@ export default function AdminTournamentPage() {
               </div>
               <div>
                 <p className="font-semibold text-gray-950">Public link</p>
-                <p className="break-all">{displayPublicUrl}</p>
+                <p className="break-all">{displayPublicUrl || "Publish this tournament first to generate a public link."}</p>
               </div>
             </div>
             <div className="mt-4 flex flex-wrap gap-2">
               <a
-                className="rounded-md bg-blue-700 px-3 py-2 text-sm font-medium text-white hover:bg-blue-800"
-                href={displayPublicUrl}
+                className={`rounded-md px-3 py-2 text-sm font-medium text-white ${displayPublicUrl ? "bg-blue-700 hover:bg-blue-800" : "pointer-events-none bg-gray-400"}`}
+                aria-disabled={!displayPublicUrl}
+                href={displayPublicUrl || undefined}
                 onClick={handleOpenPublicPage}
                 rel="noreferrer"
                 target="_blank"
@@ -928,6 +918,7 @@ export default function AdminTournamentPage() {
               </a>
               <button
                 className="rounded-md border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                disabled={!displayPublicUrl}
                 onClick={handleCopyPublicLink}
                 type="button"
               >
@@ -937,7 +928,13 @@ export default function AdminTournamentPage() {
             </div>
           </div>
           <div className="w-fit rounded-lg border border-gray-200 bg-gray-50 p-3">
-            <QRCodeSVG value={displayPublicUrl} size={144} />
+            {displayPublicUrl ? (
+              <QRCodeSVG value={displayPublicUrl} size={144} />
+            ) : (
+              <div className="flex h-36 w-36 items-center justify-center text-center text-xs font-medium text-gray-500">
+                Publish first
+              </div>
+            )}
           </div>
         </div>
       </section>
@@ -951,7 +948,7 @@ export default function AdminTournamentPage() {
           <Badge className={publishBadgeClass}>{publishStatusLabel}</Badge>
         </CardHeader>
         <CardContent>
-          <div className="grid gap-3 text-sm text-slate-300 md:grid-cols-4">
+          <div className="grid gap-3 text-sm text-slate-300 md:grid-cols-3">
             <div>
               <p className="font-semibold text-slate-50">Publish Status</p>
               <p className="mt-1">{publishStatusLabel}</p>
@@ -959,10 +956,6 @@ export default function AdminTournamentPage() {
             <div>
               <p className="font-semibold text-slate-50">Public ID</p>
               <p className="mt-1 break-all">{tournament?.public_id || "-"}</p>
-            </div>
-            <div>
-              <p className="font-semibold text-slate-50">Public URL</p>
-              <p className="mt-1 break-all">{tournament?.public_url || "Publish to generate hosted URL"}</p>
             </div>
             <div>
               <p className="font-semibold text-slate-50">Last Published</p>
@@ -997,18 +990,6 @@ export default function AdminTournamentPage() {
             >
               {isUnpublishingTournament ? "Unpublishing..." : "Unpublish Tournament"}
             </Button>
-            {tournament?.public_url ? (
-              <Button asChild variant="secondary">
-                <a
-                  href={tournament.public_url}
-                  onClick={handleOpenHostedPublicPage}
-                  rel="noreferrer"
-                  target="_blank"
-                >
-                  Open Public Page
-                </a>
-              </Button>
-            ) : null}
           </div>
 
           {publishMessage ? <p className="mt-3 text-sm font-medium text-emerald-200">{publishMessage}</p> : null}

@@ -100,10 +100,6 @@ export default function AdminPage() {
     }
   }
 
-  function getPublicUrl(tournamentId) {
-    return `${window.location.origin}/t/${tournamentId}`;
-  }
-
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-6xl flex-col gap-6 px-4 py-8">
       <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
@@ -251,18 +247,28 @@ export default function AdminPage() {
               </DialogHeader>
 
               <div className="flex justify-center">
-                <div className="rounded-lg border border-slate-700 bg-white p-3">
-                  <QRCodeSVG value={getPublicUrl(shareTournament.id)} size={180} />
-                </div>
+                {shareTournament.public_url ? (
+                  <div className="rounded-lg border border-slate-700 bg-white p-3">
+                    <QRCodeSVG value={shareTournament.public_url} size={180} />
+                  </div>
+                ) : (
+                  <div className="rounded-lg border border-amber-400/30 bg-amber-500/10 px-4 py-3 text-sm font-medium text-amber-100">
+                    Publish this tournament first to generate a public link.
+                  </div>
+                )}
               </div>
 
-              <p className="break-all rounded-md border border-slate-800 bg-slate-900/70 px-3 py-2 text-sm text-slate-300">
-                {getPublicUrl(shareTournament.id)}
-              </p>
+              {shareTournament.public_url ? (
+                <>
+                  <p className="break-all rounded-md border border-slate-800 bg-slate-900/70 px-3 py-2 text-sm text-slate-300">
+                    {shareTournament.public_url}
+                  </p>
 
-              <Button className="w-full" onClick={() => handleCopyLink(getPublicUrl(shareTournament.id))} type="button">
-                Copy link
-              </Button>
+                  <Button className="w-full" onClick={() => handleCopyLink(shareTournament.public_url)} type="button">
+                    Copy link
+                  </Button>
+                </>
+              ) : null}
               {copyMessage ? <p className="text-center text-sm font-medium text-slate-400">{copyMessage}</p> : null}
             </>
           ) : null}
