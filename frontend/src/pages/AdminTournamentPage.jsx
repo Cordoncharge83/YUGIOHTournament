@@ -776,6 +776,9 @@ export default function AdminTournamentPage() {
   const lastSyncTime = autoSyncStatus?.last_sync_at
     ? new Date(autoSyncStatus.last_sync_at).toLocaleString()
     : null;
+  const lastHostedPublishTime = autoSyncStatus?.last_hosted_publish_at
+    ? new Date(autoSyncStatus.last_hosted_publish_at).toLocaleString()
+    : null;
   const isRunningInTauri = isTauriApp();
   const autoSyncStateLabel = activeWatcherForCurrentTournament
     ? "Watching / Enabled"
@@ -1137,6 +1140,16 @@ export default function AdminTournamentPage() {
         {autoSyncStatus?.last_status ? (
           <p className="mt-3 text-sm text-slate-300">
             <span className="font-medium text-slate-200">Last sync result:</span> {autoSyncStatus.last_status}
+          </p>
+        ) : null}
+        {lastHostedPublishTime ? (
+          <p className="mt-2 text-sm text-slate-300">
+            <span className="font-medium text-slate-200">Last hosted publish:</span> {lastHostedPublishTime}
+          </p>
+        ) : null}
+        {autoSyncStatus?.last_warning ? (
+          <p className="mt-3 rounded-md border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-sm font-medium text-amber-100">
+            {autoSyncStatus.last_warning}
           </p>
         ) : null}
         {autoSyncMessage ? <p className="mt-3 text-sm font-medium text-emerald-200">{autoSyncMessage}</p> : null}

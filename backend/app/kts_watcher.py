@@ -10,6 +10,9 @@ from defusedxml.ElementTree import fromstring
 from fastapi import HTTPException, status
 
 from app.database import SessionLocal
+from app.models import Tournament
+from app.public_publishing_client import PublicPublishingConfigurationError, PublicPublishingRemoteError, publish_snapshot
+from app.publishing import build_publish_payload, ensure_public_id, publish_tournament
 from app.routes.tournaments import import_parsed_tournament_file, parse_tournament_file
 from app.schemas import TournamentFileImportSummary
 
@@ -37,6 +40,8 @@ class KtsAutoSyncService:
         self._last_sync_at: datetime | None = None
         self._last_status: str | None = None
         self._last_error: str | None = None
+        self._last_warning: str | None = None
+        self._last_hosted_publish_at: datetime | None = None
 
     def enable(self, tournament_id: int, tournament_name: str | None, file_path: str) -> dict:
         if Observer is None:
@@ -55,6 +60,7 @@ class KtsAutoSyncService:
             self.enabled = True
             self._last_status = "Starting watcher"
             self._last_error = None
+            self._last_warning = None
 
         observer = Observer()
         observer.schedule(_KtsFileEventHandler(self), str(watched_file.parent), recursive=False)
@@ -72,6 +78,7 @@ class KtsAutoSyncService:
         with self._lock:
             self._last_status = "Disabled"
             self._last_error = None
+            self._last_warning = None
 
         logger.info("KTS auto-sync disabled")
         return self.status()
@@ -112,6 +119,8 @@ class KtsAutoSyncService:
                 "last_sync_at": self._last_sync_at,
                 "last_status": self._last_status,
                 "last_error": self._last_error,
+                "last_warning": self._last_warning,
+                "last_hosted_publish_at": self._last_hosted_publish_at,
             }
 
     def run_now(self) -> tuple[TournamentFileImportSummary, dict]:
@@ -126,6 +135,7 @@ class KtsAutoSyncService:
         with self._lock:
             self._last_status = "Change detected; waiting for file write to finish"
             self._last_error = None
+            self._last_warning = None
 
             if self._timer is not None:
                 self._timer.cancel()
@@ -150,6 +160,7 @@ class KtsAutoSyncService:
             enabled = self.enabled
             self._last_status = "Importing"
             self._last_error = None
+            self._last_warning = None
 
         if not enabled or file_path is None or tournament_id is None:
             message = "Auto-sync is not enabled"
@@ -165,6 +176,7 @@ class KtsAutoSyncService:
 
             root = fromstring(file_path.read_bytes())
             summary = import_parsed_tournament_file(db, tournament_id, parse_tournament_file(root))
+            hosted_publish_warning = self._republish_if_published(db, tournament_id)
             message = (
                 f"Imported {summary.players_imported} players, {summary.rounds_imported} rounds, "
                 f"{summary.matches_imported} matches, and {summary.standings_imported} standings entries"
@@ -173,6 +185,7 @@ class KtsAutoSyncService:
                 self._last_sync_at = datetime.now(timezone.utc)
                 self._last_status = message
                 self._last_error = None
+                self._last_warning = hosted_publish_warning
             logger.info("KTS auto-sync import succeeded for %s: %s", file_path, message)
             return summary
         except HTTPException as exc:
@@ -234,11 +247,34 @@ class KtsAutoSyncService:
             self._last_sync_at = datetime.now(timezone.utc)
             self._last_status = "Import failed"
             self._last_error = message
+            self._last_warning = None
 
         if include_exception:
             logger.exception("KTS auto-sync import failed for %s: %s", file_path, message)
         else:
             logger.error("KTS auto-sync import failed for %s: %s", file_path, message)
+
+    def _republish_if_published(self, db, tournament_id: int) -> str | None:
+        tournament = db.get(Tournament, tournament_id)
+        if tournament is None or tournament.publish_status != "published":
+            return None
+
+        try:
+            public_id = ensure_public_id(db, tournament)
+            snapshot = build_publish_payload(db, tournament)
+            publish_snapshot(public_id, snapshot)
+            publish_tournament(db, tournament)
+        except (PublicPublishingConfigurationError, PublicPublishingRemoteError) as exc:
+            db.rollback()
+            warning = f"Local sync succeeded, hosted update failed: {exc}"
+            logger.warning("KTS auto-sync hosted re-publish failed for tournament %s: %s", tournament_id, exc)
+            return warning
+
+        with self._lock:
+            self._last_hosted_publish_at = datetime.now(timezone.utc)
+
+        logger.info("KTS auto-sync refreshed hosted snapshot for tournament %s", tournament_id)
+        return None
 
 
 class _KtsFileEventHandler(FileSystemEventHandler):

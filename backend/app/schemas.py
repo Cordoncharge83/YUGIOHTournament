@@ -21,6 +21,8 @@ class AutoSyncStatusRead(BaseModel):
     last_sync_at: datetime | None
     last_status: str | None
     last_error: str | None
+    last_warning: str | None = None
+    last_hosted_publish_at: datetime | None = None
 
 
 class AutoSyncEnableRequest(BaseModel):
