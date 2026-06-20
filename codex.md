@@ -1,135 +1,57 @@
-# YuGiOh Tournament Manager - Project Rules
+# Yu-Gi-Oh Tournament Manager - Project Rules
 
-## Goal
+## Product Shape
 
-Build a lightweight tournament management platform for local Yu-Gi-Oh tournaments.
+This is a local-first Yu-Gi-Oh tournament companion for organizers using Konami Tournament Software.
 
-The application is NOT intended to replace Konami tournament software.
+The app does not replace KTS. KTS remains the event source, and this app provides:
 
-V1 focuses only on:
+- Tauri desktop organizer UI
+- Packaged FastAPI backend sidecar
+- SQLite storage in the desktop AppData directory
+- KTS `.Tournament` import and auto-sync
+- Hosted public snapshot publishing
+- Cloudflare Pages public tournament viewer
 
-* tournament creation
-* player management
-* manual round creation
-* manual match pairings
-* table assignments
-* result entry
-* public tournament display page
-* KTS `.Tournament` import
-* local KTS auto-sync for one active live-event file
+## Current Architecture
 
----
+Desktop app:
 
-# Tech Stack
+```text
+Tauri React admin UI
+-> local FastAPI backend at http://127.0.0.1:8000
+-> SQLite in AppData
+```
 
-Frontend:
+Hosted public flow:
 
-* React
-* Vite
-* TailwindCSS
-* Axios
+```text
+Desktop backend
+-> Cloudflare Worker snapshot API
+-> Cloudflare Pages public site at /tournaments/:publicId
+```
 
-Backend:
+## Guardrails
 
-* FastAPI
-* SQLAlchemy
-* Pydantic
+- Do not replace KTS behavior.
+- Do not introduce user accounts/auth until explicitly requested.
+- Do not expose COSSY IDs, local file paths, publish keys, or local database IDs in public pages.
+- Keep the public site route-limited to player-facing pages.
+- Keep desktop/admin routes out of the public build.
+- Keep the backend local-first and SQLite-based.
+- Avoid broad architecture refactors during tournament-day reliability work.
 
-Database:
+## Development Rules
 
-* SQLite by default
+- Prefer small, explicit changes over broad refactors.
+- Preserve existing API behavior unless a task explicitly changes it.
+- Do not split large files just for cleanup before organizer testing.
+- Keep publish keys out of committed files.
+- Use AppData settings for installed-app local configuration.
+- Keep Cloudflare Worker API changes isolated to `public-service/`.
 
-Infrastructure:
+## Build Targets
 
-* No infrastructure required for normal SQLite development
-* Tauri desktop dev starts the backend automatically
-* Manual web dev remains available with SQLite
-
----
-
-# Architecture Rules
-
-* Keep architecture simple and beginner-readable.
-* Avoid overengineering.
-* Prefer explicit readable code over abstractions.
-* Do not introduce microservices.
-* Do not introduce CQRS/event sourcing.
-* Do not introduce Redis.
-* Do not introduce GraphQL.
-* Do not introduce WebSockets for V1.
-* Do not introduce message brokers.
-
----
-
-# V1 Feature Scope
-
-Allowed:
-
-* Create tournaments
-* Add players
-* Create rounds
-* Create matches manually
-* Assign table numbers
-* Enter match results
-* Display standings
-* Public read-only tournament page
-
-Not allowed in V1:
-
-* Authentication
-* Role systems
-* Decklists
-* PWA
-* Automatic Swiss pairings
-* Tie-break algorithms
-* Notifications
-* Match history analytics
-* Multi-admin editing
-* Payments
-* Discord integration
-
----
-
-# Database Rules
-
-Use simple relational design.
-
-Core tables only:
-
-* tournaments
-* players
-* rounds
-* matches
-
-Avoid premature optimization.
-
----
-
-# Frontend Rules
-
-* Mobile-friendly UI
-* Keep components small
-* Avoid giant component files
-* Prefer simple Tailwind styling
-* No heavy UI libraries for V1
-
----
-
-# Backend Rules
-
-* Use REST APIs only
-* Keep route structure simple
-* Keep validation readable
-* Use SQLAlchemy ORM
-* Use environment variables for DB config
-* Default local database URL is `sqlite:///./data/app.db`
-
----
-
-# General Development Rules
-
-* Implement features incrementally.
-* Never add features outside requested scope.
-* Ask before introducing new dependencies.
-* Keep folder structure clean and minimal.
-* Prioritize maintainability over cleverness.
+- Desktop dev/build uses Vite desktop mode and the Tauri app.
+- Hosted public dev/build uses Vite public mode.
+- Tauri release packages the FastAPI backend with PyInstaller as a sidecar resource.

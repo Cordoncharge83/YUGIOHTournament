@@ -198,7 +198,6 @@ The hosted public site is a separate Vite target. It does not register admin rou
 Create `frontend/.env.public` from `frontend/.env.public.example`:
 
 ```text
-VITE_APP_TARGET=public
 VITE_PUBLIC_SERVICE_URL=https://your-worker.workers.dev
 ```
 
@@ -228,7 +227,6 @@ Root directory: frontend
 Build command: npm run build:public
 Build output directory: dist
 Environment:
-  VITE_APP_TARGET=public
   VITE_PUBLIC_SERVICE_URL=https://your-worker.workers.dev
 ```
 
@@ -238,6 +236,32 @@ The public target exposes only:
 /
 /tournaments/:publicId
 ```
+
+The hosted public page fetches:
+
+```text
+VITE_PUBLIC_SERVICE_URL/api/tournaments/:publicId
+```
+
+The Worker response:
+
+```text
+{ publicId, snapshot, status, updatedAt }
+```
+
+is adapted into the existing public page data shape:
+
+```text
+tournament.name       <- snapshot.tournament_name
+tournament.location   <- snapshot.location
+rounds                <- snapshot.current_round_number
+matches               <- snapshot.current_round_pairings
+standings             <- snapshot.standings
+players count/search  <- snapshot metadata plus visible player names
+lastUpdatedAt         <- snapshot.last_updated_at or updatedAt
+```
+
+COSSY IDs and local database IDs are not displayed.
 
 ---
 

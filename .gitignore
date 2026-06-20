@@ -50,3 +50,4 @@ public-service/.wrangler/
 # Tauri/Rust build output
 target/
 frontend/src-tauri/target/
+frontend/src-tauri/gen/schemas/
