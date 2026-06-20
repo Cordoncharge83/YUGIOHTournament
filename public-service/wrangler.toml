@@ -4,5 +4,5 @@ compatibility_date = "2026-06-20"
 
 [[kv_namespaces]]
 binding = "TOURNAMENT_SNAPSHOTS"
-id = "replace-with-production-kv-namespace-id"
-preview_id = "replace-with-preview-kv-namespace-id"
+id = "0a95fba3137c4287bbf0947e800f4dd7"
+preview_id = "e1e344eb5c154aba8ba9d822bb3cd205"
