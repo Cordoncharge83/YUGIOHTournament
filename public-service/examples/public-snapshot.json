@@ -1,0 +1,30 @@
+{
+  "tournament_name": "Saturday WCQ",
+  "location": "Local Game Store",
+  "current_round_number": 2,
+  "current_round_name": "Round 2",
+  "last_updated_at": "2026-06-20T10:00:00Z",
+  "public_display_status": "published",
+  "current_round_pairings": [
+    {
+      "table_number": 1,
+      "player_one_name": "Alex",
+      "player_two_name": "Sam",
+      "result_status": "UNREPORTED",
+      "notes": null
+    }
+  ],
+  "standings": [
+    {
+      "rank": 1,
+      "player_name": "Alex",
+      "points": 3,
+      "tiebreaker": "100%"
+    }
+  ],
+  "metadata": {
+    "total_players": 16,
+    "total_rounds": 2,
+    "unreported_match_count": 8
+  }
+}
