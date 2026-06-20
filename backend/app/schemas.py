@@ -73,6 +73,11 @@ class TournamentPublishStatusRead(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class PublicPublishingConfigRead(BaseModel):
+    configured: bool
+    service_url: str | None
+
+
 class RoundCsvImportSummary(BaseModel):
     round_number: int
     matches_imported: int

@@ -11,10 +11,18 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import Match, Player, PlayerProfile, Round, Standing, Tournament
 from app.player_profiles import get_or_create_player_profile
-from app.publishing import publish_tournament, unpublish_tournament
+from app.public_publishing_client import (
+    PublicPublishingConfigurationError,
+    PublicPublishingRemoteError,
+    get_public_publishing_config,
+    publish_snapshot,
+    unpublish_snapshot,
+)
+from app.publishing import build_publish_payload, ensure_public_id, publish_tournament, unpublish_tournament
 from app.public_snapshots import build_public_tournament_snapshot
 from app.schemas import (
     PublicTournamentSnapshotRead,
+    PublicPublishingConfigRead,
     RoundCsvImportSummary,
     RoundCsvPreviewSummary,
     StandingRead,
@@ -592,13 +600,32 @@ def get_tournament_publish_status(tournament_id: int, db: Session = Depends(get_
     return tournament
 
 
+@router.get("/public-publishing/config", response_model=PublicPublishingConfigRead)
+def get_public_publishing_configuration() -> PublicPublishingConfigRead:
+    config = get_public_publishing_config()
+    return PublicPublishingConfigRead(
+        configured=config.is_configured,
+        service_url=config.service_url,
+    )
+
+
 @router.post("/{tournament_id}/publish", response_model=TournamentPublishStatusRead)
 def publish_tournament_route(tournament_id: int, db: Session = Depends(get_db)) -> Tournament:
     tournament = db.get(Tournament, tournament_id)
     if tournament is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
 
-    return publish_tournament(db, tournament)
+    try:
+        public_id = ensure_public_id(db, tournament)
+        snapshot = build_publish_payload(db, tournament)
+        publish_snapshot(public_id, snapshot)
+        return publish_tournament(db, tournament)
+    except PublicPublishingConfigurationError as exc:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+    except PublicPublishingRemoteError as exc:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
 
 
 @router.post("/{tournament_id}/unpublish", response_model=TournamentPublishStatusRead)
@@ -607,7 +634,16 @@ def unpublish_tournament_route(tournament_id: int, db: Session = Depends(get_db)
     if tournament is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
 
-    return unpublish_tournament(db, tournament)
+    if not tournament.public_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tournament has not been published yet")
+
+    try:
+        unpublish_snapshot(tournament.public_id)
+        return unpublish_tournament(db, tournament)
+    except PublicPublishingConfigurationError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+    except PublicPublishingRemoteError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc
 
 
 @router.patch("/{tournament_id}/current-round", response_model=TournamentRead)

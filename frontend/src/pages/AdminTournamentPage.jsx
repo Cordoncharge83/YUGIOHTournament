@@ -72,6 +72,7 @@ export default function AdminTournamentPage() {
   const [autoSyncError, setAutoSyncError] = useState("");
   const [isPublishingTournament, setIsPublishingTournament] = useState(false);
   const [isUnpublishingTournament, setIsUnpublishingTournament] = useState(false);
+  const [publicPublishingConfig, setPublicPublishingConfig] = useState(null);
   const [publishMessage, setPublishMessage] = useState("");
   const [publishError, setPublishError] = useState("");
   const [isEnablingAutoSync, setIsEnablingAutoSync] = useState(false);
@@ -163,6 +164,15 @@ export default function AdminTournamentPage() {
     }
   }
 
+  async function fetchPublicPublishingConfig() {
+    try {
+      const response = await api.get("/tournaments/public-publishing/config");
+      setPublicPublishingConfig(response.data);
+    } catch {
+      setPublicPublishingConfig(null);
+    }
+  }
+
   async function fetchTournamentContentData() {
     await Promise.all([
       fetchTournament(),
@@ -177,6 +187,7 @@ export default function AdminTournamentPage() {
     await Promise.all([
       fetchTournamentContentData(),
       fetchAutoSyncStatus(),
+      fetchPublicPublishingConfig(),
     ]);
   }
 
@@ -512,7 +523,7 @@ export default function AdminTournamentPage() {
       setPublishMessage("");
       const response = await api.post(`/tournaments/${id}/publish`);
       setTournament((currentTournament) => ({ ...currentTournament, ...response.data }));
-      setPublishMessage("Tournament marked as published locally.");
+      setPublishMessage("Tournament published online.");
     } catch (error) {
       setPublishError(getApiErrorMessage(error, "Could not publish tournament."));
     } finally {
@@ -527,7 +538,7 @@ export default function AdminTournamentPage() {
       setPublishMessage("");
       const response = await api.post(`/tournaments/${id}/unpublish`);
       setTournament((currentTournament) => ({ ...currentTournament, ...response.data }));
-      setPublishMessage("Tournament unpublished locally.");
+      setPublishMessage("Tournament unpublished online.");
     } catch (error) {
       setPublishError(getApiErrorMessage(error, "Could not unpublish tournament."));
     } finally {
@@ -685,6 +696,25 @@ export default function AdminTournamentPage() {
     }
   }
 
+  async function handleOpenHostedPublicPage(event) {
+    if (!tournament?.public_url) {
+      return;
+    }
+
+    if (!isTauriApp()) {
+      return;
+    }
+
+    event.preventDefault();
+
+    try {
+      const { openUrl } = await import("@tauri-apps/plugin-opener");
+      await openUrl(tournament.public_url);
+    } catch {
+      window.open(tournament.public_url, "_blank", "noopener,noreferrer");
+    }
+  }
+
   const publicPath = `/t/${id}`;
   const publicUrl = `${window.location.origin}${publicPath}`;
   const playerDisplayNames = Object.fromEntries(players.map((player) => [player.id, formatPlayerDisplayName(player.name)]));
@@ -771,6 +801,7 @@ export default function AdminTournamentPage() {
   const publishTimestamp = tournament?.last_published_at
     ? new Date(tournament.last_published_at).toLocaleString()
     : null;
+  const publicPublishingConfigured = publicPublishingConfig?.configured;
 
   useEffect(() => {
     if (rounds.length === 0) {
@@ -910,12 +941,16 @@ export default function AdminTournamentPage() {
         <CardHeader className="flex-row items-start justify-between gap-4 space-y-0">
           <div>
             <CardTitle>Public Publishing</CardTitle>
-            <CardDescription>Local publish state for future hosted public pages.</CardDescription>
+            <CardDescription>Hosted public snapshot publishing.</CardDescription>
           </div>
           <Badge className={publishBadgeClass}>{publishStatusLabel}</Badge>
         </CardHeader>
         <CardContent>
-          <div className="grid gap-3 text-sm text-slate-300 md:grid-cols-3">
+          <div className="grid gap-3 text-sm text-slate-300 md:grid-cols-4">
+            <div>
+              <p className="font-semibold text-slate-50">Publish Status</p>
+              <p className="mt-1">{publishStatusLabel}</p>
+            </div>
             <div>
               <p className="font-semibold text-slate-50">Public ID</p>
               <p className="mt-1 break-all">{tournament?.public_id || "-"}</p>
@@ -927,6 +962,17 @@ export default function AdminTournamentPage() {
             <div>
               <p className="font-semibold text-slate-50">Last Published</p>
               <p className="mt-1">{publishTimestamp || "-"}</p>
+            </div>
+          </div>
+
+          <div className="mt-4 grid gap-3 border-t border-slate-800 pt-4 text-sm text-slate-300 md:grid-cols-2">
+            <div>
+              <p className="font-semibold text-slate-50">Publishing Service</p>
+              <p className="mt-1 break-all">{publicPublishingConfig?.service_url || "Not configured"}</p>
+            </div>
+            <div>
+              <p className="font-semibold text-slate-50">Configuration</p>
+              <p className="mt-1">{publicPublishingConfigured ? "Ready" : "Missing service URL or publish key"}</p>
             </div>
           </div>
 
@@ -946,6 +992,18 @@ export default function AdminTournamentPage() {
             >
               {isUnpublishingTournament ? "Unpublishing..." : "Unpublish Tournament"}
             </Button>
+            {tournament?.public_url ? (
+              <Button asChild variant="secondary">
+                <a
+                  href={tournament.public_url}
+                  onClick={handleOpenHostedPublicPage}
+                  rel="noreferrer"
+                  target="_blank"
+                >
+                  Open Public Page
+                </a>
+              </Button>
+            ) : null}
           </div>
 
           {publishMessage ? <p className="mt-3 text-sm font-medium text-emerald-200">{publishMessage}</p> : null}
