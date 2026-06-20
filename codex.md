@@ -38,12 +38,12 @@ Backend:
 Database:
 
 * SQLite by default
-* PostgreSQL optional for compatibility
 
 Infrastructure:
 
 * No infrastructure required for normal SQLite development
-* Docker Compose is optional legacy tooling for PostgreSQL compatibility testing
+* Tauri desktop dev starts the backend automatically
+* Manual web dev remains available with SQLite
 
 ---
 
@@ -79,7 +79,6 @@ Not allowed in V1:
 * Authentication
 * Role systems
 * Decklists
-* Tauri packaging
 * PWA
 * Automatic Swiss pairings
 * Tie-break algorithms

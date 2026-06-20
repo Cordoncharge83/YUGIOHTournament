@@ -1,240 +1,100 @@
 # Yu-Gi-Oh Tournament Companion
 
-A web application designed to act as a companion and public broadcast layer for **Konami Tournament Software (KTS)** during local Yu-Gi-Oh tournaments.
+A local tournament companion for **Konami Tournament Software (KTS)**.
 
-Instead of replacing KTS, this project focuses on improving the player experience by providing:
-
-- Mobile-friendly public pairings
-- Public round display
-- QR code sharing
-- Live tournament information
-- KTS .Tournament import workflow
-- Local KTS auto-sync for live-event updates
-- Lightweight local tournament broadcasting
-
----
-
-# Project Vision
-
-Most local communities currently rely on:
-
-- Printed pairings
-- Discord screenshots
-- Google Forms
-- Crowding around the organizer's laptop
-
-Meanwhile, KTS itself is:
-
-- Desktop-only
-- Organizer-focused
-- Not designed for player mobile access
-
-This project bridges that gap.
-
-The organizer continues using KTS normally, then imports the KTS `.Tournament` file or enables local auto-sync during a live event.
-
-Players can then:
-
-- Scan a QR code
-- Open the public page
-- Instantly view pairings and round information from their phones
+The app does not replace KTS. Organizers keep using KTS, then import or auto-sync the KTS `.Tournament` file so players can view pairings, standings, and public tournament information from a local public page.
 
 ---
 
 # Current Features
 
-## Tournament Management
-
-- Create tournaments
-- Tournament list view
-- Tournament detail page
-
-## KTS Tournament File Import
-
-- Import `.Tournament` files exported by KTS
-- Automatically:
-  - Create players
-  - Create rounds
-  - Create matches
-  - Import standings when available
-  - Set current round
-- BYE handling support
-
-## KTS Auto-Sync
-
-- Watch one configured `.Tournament` file during a live event
-- Automatically import changes after KTS saves the file
-- Manual `Sync Now` action for immediate updates
-
-## KTS CSV Import
-
-- Advanced fallback import for round pairings and standings CSVs
-- Kept for compatibility with partial KTS exports
-
-## Public Tournament Page
-
-- Mobile-friendly public view
-- Current round display
-- Round tabs
-- Public pairings
-- Match result display
-- QR code sharing
-
-## Match Results
-
-KTS-style result workflow:
-
-- Player 1 wins
-- Player 2 wins
-- Draw
-- Double loss
-- Unreported
-
-Designed for fast tournament-day updates.
-
-## Sharing
-
-- Public tournament link
-- Copy link button
-- QR code modal
+- Tauri desktop app
+- React + Vite frontend
+- FastAPI backend auto-started by Tauri in desktop dev mode
+- SQLite database
+- AppData storage in desktop mode
+- KTS `.Tournament` import
+- KTS auto-sync watcher
+- Current round pairings
+- Standings
+- Match result management
+- QR sharing
+- Local public tournament page
+- Public snapshot/export endpoint
+- Local publish/unpublish state for future hosted public pages
+- Community player history
 
 ---
 
 # Tech Stack
 
-## Frontend
+Frontend:
 
 - React
 - Vite
 - Tailwind CSS
 - JavaScript
+- Tauri v2
 
-## Backend
+Backend:
 
 - FastAPI
 - SQLAlchemy
-- SQLite by default
-- PostgreSQL optional
+- Pydantic
+- SQLite
 
-## Database
+Database:
 
-- SQLite local database file
-- PostgreSQL via Docker remains available as optional legacy development tooling
+- Desktop mode: SQLite in the app data directory
+- Manual web dev mode: SQLite at `backend/data/app.db`
 
----
-
-# Architecture Philosophy
-
-This project intentionally does **NOT** attempt to replace Konami Tournament Software.
-
-Instead, it acts as:
-
-- A companion platform
-- A public-facing display layer
-- A mobile-friendly tournament viewer
-
-Primary workflow:
-
-```text
-KTS
--> Save .Tournament file
--> Import once or auto-sync into app
--> Public page updates
-```
+`DATABASE_URL` is still supported for explicit local configuration, but SQLite is the documented and supported development path.
 
 ---
 
-# Local Development
+# Supported Development Workflows
 
-## Requirements
+## A. Tauri Desktop Dev
+
+This is the main development workflow.
+
+Requirements:
 
 - Python 3.11+
 - Node.js
-- Docker Desktop is not required for the normal SQLite workflow
+- Rust via rustup
+- Microsoft Visual Studio Build Tools with MSVC and Windows SDK components
+- WebView2, which is installed on most current Windows systems
 
----
-
-# Backend Setup
-
-Local development uses SQLite by default. No Docker or PostgreSQL service is required.
-
-```bash
-DATABASE_URL=sqlite:///./data/app.db
-```
-
-This value is already set in `backend/.env.example`; copy it to `backend/.env` if needed.
-
-The backend creates `./data/app.db` automatically on startup.
-
-Activate virtual environment:
+Install dependencies:
 
 ```bash
 cd backend
+python -m venv .venv
 .venv\Scripts\activate
+pip install -r requirements.txt
 ```
-
-Run FastAPI:
 
 ```bash
-uvicorn app.main:app --reload
-```
-
-Backend runs on:
-
-```text
-http://127.0.0.1:8000
-```
-
-Swagger docs:
-
-```text
-http://127.0.0.1:8000/docs
-```
-
----
-
-# Frontend Setup
-
-```bash
-cd frontend
+cd ../frontend
 npm install
-npm run dev
 ```
 
-Frontend runs on:
-
-```text
-http://127.0.0.1:5173
-```
-
----
-
-# Tauri Desktop Proof Of Concept
-
-The frontend includes a minimal Tauri v2 scaffold that loads the existing Vite app in a desktop window.
-
-Prerequisites for Tauri development on Windows:
-
-- Rust via rustup
-- Microsoft Visual Studio Build Tools with MSVC and Windows SDK components
-- WebView2, which is already installed on most current Windows systems
-
-Run the desktop dev window:
+Run the desktop app:
 
 ```bash
 cd frontend
 npm run tauri:dev
 ```
 
-In Tauri dev mode, the desktop shell starts the FastAPI backend automatically from the repository `backend` directory:
+In Tauri dev mode:
 
-```bash
-uvicorn app.main:app --reload
-```
+- Vite starts normally.
+- The Tauri shell starts the FastAPI backend automatically from the repository `backend` directory.
+- If `127.0.0.1:8000` is already in use, Tauri assumes the backend is already running.
+- When the Tauri app exits, it stops the backend process it started.
 
-The launcher prefers `backend/.venv/Scripts/python.exe -m uvicorn` when the virtual environment exists. If something is already listening on `127.0.0.1:8000`, Tauri assumes the backend is already running and does not start a duplicate process. When the Tauri app exits, it stops the backend process it started.
-
-When Tauri starts the backend, it passes desktop app-data environment variables to FastAPI:
+Desktop mode passes app-data environment variables to FastAPI:
 
 ```text
 APP_DATA_DIR=%LOCALAPPDATA%\YuGiOhTournamentManager
@@ -249,49 +109,74 @@ logs/
 settings.json
 ```
 
-Manual backend development still uses `DATABASE_URL=sqlite:///./data/app.db` from `backend/.env`. The desktop launcher sets its own `DATABASE_URL`, so the Tauri app stores data in the Windows local app data directory instead of the repository `data/` folder.
+---
 
-The normal web workflow remains unchanged:
+## B. Web Dev / Debug Mode
+
+This mode keeps the browser workflow available for fast frontend/backend debugging.
+
+No external database service is required.
+
+Create `backend/.env` from `backend/.env.example` if needed:
+
+```text
+DATABASE_URL=sqlite:///./data/app.db
+```
+
+Start the backend manually:
+
+```bash
+cd backend
+.venv\Scripts\activate
+uvicorn app.main:app --reload
+```
+
+Backend:
+
+```text
+http://127.0.0.1:8000
+```
+
+Swagger docs:
+
+```text
+http://127.0.0.1:8000/docs
+```
+
+Start the frontend manually:
 
 ```bash
 cd frontend
 npm run dev
 ```
 
-This proof of concept wraps the existing React UI and starts the existing FastAPI backend for local desktop development. It does not package Python or the backend into the final installer yet.
+Frontend:
 
----
-
-# Optional PostgreSQL Setup
-
-PostgreSQL/Docker remains available for compatibility testing, but it is no longer the default local workflow.
-
-Start PostgreSQL only if you intentionally set `DATABASE_URL` to a PostgreSQL URL:
-
-```bash
-docker compose up -d
+```text
+http://127.0.0.1:5173
 ```
 
-Example PostgreSQL URL:
+Manual web dev mode stores data in:
 
-```bash
-DATABASE_URL=postgresql+psycopg://postgres:password@localhost:5432/yugioh_tournament
+```text
+backend/data/app.db
 ```
 
 ---
 
-# KTS Import Notes
+# KTS Workflow
 
-Recommended workflow:
+Recommended live-event workflow:
 
-- Use `KTS Tournament File -> Manual Import` for one-time updates.
-- Use `KTS Tournament File -> Auto-Sync` during a live event.
-- Auto-sync requires pasting the full local `.Tournament` file path in the web version.
+- Open the tournament in KTS.
+- In the desktop app, choose the KTS `.Tournament` file.
+- Import once or enable auto-sync.
+- Share the local public page link or QR code with players.
 
-Advanced CSV fallback:
+Advanced fallback imports remain available:
 
-- Round pairings CSVs can still be imported manually.
-- Standings CSVs can still be imported manually.
+- Round pairings CSV
+- Standings CSV
 
 Pairings CSV columns:
 
@@ -299,31 +184,67 @@ Pairings CSV columns:
 - `Player 1`
 - `Player 2`
 
-Extra KTS export columns are ignored.
-
-BYEs are handled automatically and are not added as players.
+Extra KTS export columns are ignored. BYEs are handled automatically and are not added as players.
 
 ---
 
-# Future Ideas
+# Public Snapshot And Publishing Prep
 
-Potential future improvements:
+The backend exposes a public-safe tournament snapshot:
 
-- TV/display mode
-- Desktop packaging with Tauri
-- OBS overlay support
-- Tournament archive/history
-- Better mobile polish
+```text
+GET /tournaments/{tournament_id}/public-snapshot
+```
+
+The snapshot is intended as the future payload for hosted publishing. It excludes private/internal data such as COSSY IDs, local file paths, backend technical state, and internal player/match IDs.
+
+Local publish state is available through:
+
+```text
+GET  /tournaments/{tournament_id}/publish-status
+POST /tournaments/{tournament_id}/publish
+POST /tournaments/{tournament_id}/unpublish
+```
+
+This is local state only. The app does not upload anything externally yet.
+
+---
+
+# Architecture Philosophy
+
+This project intentionally stays local-first and simple:
+
+- KTS remains the source tournament tool.
+- The app provides a better organizer and player display layer.
+- SQLite is the default database.
+- Tauri desktop mode stores user data outside the repository.
+- Manual browser dev mode remains available for debugging.
+
+Primary flow:
+
+```text
+KTS
+-> Save .Tournament file
+-> Import once or auto-sync into app
+-> Local public page updates
+```
+
+Future hosted public pages should use:
+
+```text
+Publish
+-> Build public snapshot
+-> Upload snapshot to hosted API
+```
 
 ---
 
 # Status
 
-Currently in active development as an MVP / portfolio project.
-
-Focus is on:
+Active MVP development focused on:
 
 - Reliability
 - Tournament-day usability
-- Clean mobile experience
+- Clean local desktop workflow
+- Public-safe snapshot/export boundaries
 - KTS interoperability
