@@ -2,7 +2,7 @@
 
 A local tournament companion for **Konami Tournament Software (KTS)**.
 
-The app does not replace KTS. Organizers keep using KTS, then import or auto-sync the KTS `.Tournament` file so players can view pairings, standings, and public tournament information from a local public page.
+The app does not replace KTS. Organizers keep using KTS, then import or auto-sync the KTS `.Tournament` file so players can view pairings, standings, and public tournament information from a hosted public page.
 
 ---
 
@@ -19,9 +19,11 @@ The app does not replace KTS. Organizers keep using KTS, then import or auto-syn
 - Standings
 - Match result management
 - QR sharing
-- Local public tournament page
+- Local public tournament page for development
 - Public snapshot/export endpoint
-- Local publish/unpublish state for future hosted public pages
+- Hosted publish/unpublish through Cloudflare Worker
+- Cloudflare Pages public tournament site
+- Automatic hosted snapshot refresh after KTS auto-sync for published tournaments
 - Community player history
 
 ---
@@ -35,6 +37,7 @@ Frontend:
 - Tailwind CSS
 - JavaScript
 - Tauri v2
+- Cloudflare Pages public build target
 
 Backend:
 
@@ -47,6 +50,12 @@ Database:
 
 - Desktop mode: SQLite in the app data directory
 - Manual web dev mode: SQLite at `backend/data/app.db`
+
+Hosted public services:
+
+- Cloudflare Worker public snapshot API
+- Workers KV for latest public snapshot by `public_id`
+- Cloudflare Pages public site at `/tournaments/:publicId`
 
 `DATABASE_URL` is still supported for explicit local configuration, but SQLite is the documented and supported development path.
 
@@ -121,6 +130,9 @@ Create `backend/.env` from `backend/.env.example` if needed:
 
 ```text
 DATABASE_URL=sqlite:///./data/app.db
+PUBLIC_SERVICE_URL=https://your-worker.workers.dev
+PUBLIC_SITE_URL=https://your-public-site.pages.dev
+PUBLIC_PUBLISH_KEY=your-local-secret
 ```
 
 Start the backend manually:
@@ -164,6 +176,100 @@ backend/data/app.db
 
 ---
 
+## C. Hosted Public Site Dev
+
+The hosted public site is a separate Vite target. It does not register admin routes.
+
+Create `frontend/.env.public` from `frontend/.env.public.example`:
+
+```text
+VITE_APP_TARGET=public
+VITE_PUBLIC_SERVICE_URL=https://your-worker.workers.dev
+```
+
+Run the public site locally:
+
+```bash
+cd frontend
+npm run dev:public
+```
+
+Open:
+
+```text
+http://127.0.0.1:5173/tournaments/{public_id}
+```
+
+Build the public site:
+
+```bash
+npm run build:public
+```
+
+Cloudflare Pages settings:
+
+```text
+Root directory: frontend
+Build command: npm run build:public
+Build output directory: dist
+Environment:
+  VITE_APP_TARGET=public
+  VITE_PUBLIC_SERVICE_URL=https://your-worker.workers.dev
+```
+
+The public target exposes only:
+
+```text
+/
+/tournaments/:publicId
+```
+
+---
+
+## D. Cloudflare Worker Public API
+
+The Worker lives in `public-service/`.
+
+Local development:
+
+```bash
+cd public-service
+npm install
+npm run dev
+```
+
+Deploy:
+
+```bash
+npm run deploy
+```
+
+Required Worker configuration:
+
+```text
+PUBLISH_KEY
+TOURNAMENT_SNAPSHOTS KV binding
+```
+
+Optional:
+
+```text
+SNAPSHOT_TTL_HOURS=24
+```
+
+Worker endpoints:
+
+```text
+GET  /api/health
+PUT  /api/tournaments/:publicId
+GET  /api/tournaments/:publicId
+POST /api/tournaments/:publicId/unpublish
+```
+
+Published snapshots expire per tournament after 24 hours without updates by default. Publishing the same tournament again refreshes the snapshot.
+
+---
+
 # KTS Workflow
 
 Recommended live-event workflow:
@@ -171,7 +277,9 @@ Recommended live-event workflow:
 - Open the tournament in KTS.
 - In the desktop app, choose the KTS `.Tournament` file.
 - Import once or enable auto-sync.
-- Share the local public page link or QR code with players.
+- Publish the tournament.
+- Share the hosted public page link or QR code with players.
+- Keep KTS open and save changes as normal. Auto-sync updates local data and refreshes the hosted snapshot for published tournaments.
 
 Advanced fallback imports remain available:
 
@@ -188,7 +296,7 @@ Extra KTS export columns are ignored. BYEs are handled automatically and are not
 
 ---
 
-# Public Snapshot And Publishing Prep
+# Public Snapshot And Publishing
 
 The backend exposes a public-safe tournament snapshot:
 
@@ -196,9 +304,9 @@ The backend exposes a public-safe tournament snapshot:
 GET /tournaments/{tournament_id}/public-snapshot
 ```
 
-The snapshot is intended as the future payload for hosted publishing. It excludes private/internal data such as COSSY IDs, local file paths, backend technical state, and internal player/match IDs.
+The snapshot is uploaded to the hosted Worker when a tournament is published and after successful KTS auto-sync for already-published tournaments. It excludes private/internal data such as COSSY IDs, local file paths, backend technical state, and internal player/match IDs.
 
-Local publish state is available through:
+Publish state is available through:
 
 ```text
 GET  /tournaments/{tournament_id}/publish-status
@@ -206,7 +314,7 @@ POST /tournaments/{tournament_id}/publish
 POST /tournaments/{tournament_id}/unpublish
 ```
 
-This is local state only. The app does not upload anything externally yet.
+`PUBLIC_SERVICE_URL` is the Worker API base URL. `PUBLIC_SITE_URL` is the player-facing public site base URL. The desktop frontend displays and shares `PUBLIC_SITE_URL/tournaments/{public_id}` only.
 
 ---
 
@@ -226,15 +334,8 @@ Primary flow:
 KTS
 -> Save .Tournament file
 -> Import once or auto-sync into app
--> Local public page updates
-```
-
-Future hosted public pages should use:
-
-```text
-Publish
--> Build public snapshot
--> Upload snapshot to hosted API
+-> Publish public snapshot to Worker
+-> Cloudflare Pages public site reads latest snapshot
 ```
 
 ---

@@ -12,9 +12,15 @@ frontend/dist/
 
 # Environment
 .env
+.env.*
+!.env.example
+!**/.env.example
+!frontend/.env.desktop.example
+!frontend/.env.public.example
 frontend/.env.desktop
 frontend/.env.public
 frontend/.env.*.local
+public-service/.dev.vars
 
 # Local databases
 data/
@@ -28,9 +34,15 @@ Thumbs.db
 
 # Vite
 frontend/.vite/
+*.out.log
+*.err.log
 
 # Logs
 *.log
+
+# Cloudflare/Wrangler
+.wrangler/
+public-service/.wrangler/
 
 # Tauri/Rust build output
 target/
