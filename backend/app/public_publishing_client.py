@@ -23,16 +23,18 @@ class PublicPublishingRemoteError(RuntimeError):
 @dataclass(frozen=True)
 class PublicPublishingConfig:
     service_url: str | None
+    site_url: str | None
     publish_key: str | None
 
     @property
     def is_configured(self) -> bool:
-        return bool(self.service_url and self.publish_key)
+        return bool(self.service_url and self.site_url and self.publish_key)
 
 
 def get_public_publishing_config() -> PublicPublishingConfig:
     return PublicPublishingConfig(
         service_url=normalize_service_url(os.getenv("PUBLIC_SERVICE_URL")),
+        site_url=normalize_service_url(os.getenv("PUBLIC_SITE_URL")),
         publish_key=os.getenv("PUBLIC_PUBLISH_KEY") or None,
     )
 
@@ -51,6 +53,14 @@ def public_snapshot_url(public_id: str, config: PublicPublishingConfig | None = 
         raise PublicPublishingConfigurationError("PUBLIC_SERVICE_URL is not configured.")
 
     return f"{active_config.service_url}/api/tournaments/{quote(public_id, safe='')}"
+
+
+def public_site_tournament_url(public_id: str, config: PublicPublishingConfig | None = None) -> str:
+    active_config = config or get_public_publishing_config()
+    if not active_config.site_url:
+        raise PublicPublishingConfigurationError("PUBLIC_SITE_URL is not configured.")
+
+    return f"{active_config.site_url}/tournaments/{quote(public_id, safe='')}"
 
 
 def publish_snapshot(public_id: str, snapshot: dict[str, Any]) -> dict[str, Any]:
@@ -77,6 +87,8 @@ def require_public_publishing_config() -> PublicPublishingConfig:
     missing_values = []
     if not config.service_url:
         missing_values.append("PUBLIC_SERVICE_URL")
+    if not config.site_url:
+        missing_values.append("PUBLIC_SITE_URL")
     if not config.publish_key:
         missing_values.append("PUBLIC_PUBLISH_KEY")
 

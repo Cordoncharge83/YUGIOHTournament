@@ -606,6 +606,7 @@ def get_public_publishing_configuration() -> PublicPublishingConfigRead:
     return PublicPublishingConfigRead(
         configured=config.is_configured,
         service_url=config.service_url,
+        site_url=config.site_url,
     )
 
 

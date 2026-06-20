@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import Tournament
-from app.public_publishing_client import public_snapshot_url
+from app.public_publishing_client import public_site_tournament_url
 from app.public_snapshots import build_public_tournament_snapshot
 
 
@@ -32,7 +32,7 @@ def publish_tournament(db: Session, tournament: Tournament) -> Tournament:
         tournament.public_id = generate_public_id(db, tournament.name)
 
     tournament.publish_status = "published"
-    tournament.public_url = public_snapshot_url(tournament.public_id)
+    tournament.public_url = public_site_tournament_url(tournament.public_id)
     if tournament.published_at is None:
         tournament.published_at = now
     tournament.last_published_at = now

@@ -12,6 +12,9 @@ frontend/dist/
 
 # Environment
 .env
+frontend/.env.desktop
+frontend/.env.public
+frontend/.env.*.local
 
 # Local databases
 data/

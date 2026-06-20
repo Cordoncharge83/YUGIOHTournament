@@ -76,6 +76,7 @@ class TournamentPublishStatusRead(BaseModel):
 class PublicPublishingConfigRead(BaseModel):
     configured: bool
     service_url: str | None
+    site_url: str | None
 
 
 class RoundCsvImportSummary(BaseModel):

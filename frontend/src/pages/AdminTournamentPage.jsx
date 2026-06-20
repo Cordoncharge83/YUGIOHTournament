@@ -494,7 +494,7 @@ export default function AdminTournamentPage() {
 
   async function handleCopyPublicLink() {
     try {
-      await navigator.clipboard.writeText(publicUrl);
+      await navigator.clipboard.writeText(displayPublicUrl);
       setCopyMessage("Copied");
     } catch {
       setCopyMessage("Copy failed");
@@ -510,9 +510,9 @@ export default function AdminTournamentPage() {
 
     try {
       const { openUrl } = await import("@tauri-apps/plugin-opener");
-      await openUrl(publicUrl);
+      await openUrl(displayPublicUrl);
     } catch {
-      window.open(publicUrl, "_blank", "noopener,noreferrer");
+      window.open(displayPublicUrl, "_blank", "noopener,noreferrer");
     }
   }
 
@@ -716,7 +716,8 @@ export default function AdminTournamentPage() {
   }
 
   const publicPath = `/t/${id}`;
-  const publicUrl = `${window.location.origin}${publicPath}`;
+  const localPublicUrl = `${window.location.origin}${publicPath}`;
+  const displayPublicUrl = tournament?.public_url || localPublicUrl;
   const playerDisplayNames = Object.fromEntries(players.map((player) => [player.id, formatPlayerDisplayName(player.name)]));
   const roundNumbers = Object.fromEntries(rounds.map((round) => [round.id, round.number]));
   const sortedRounds = [...rounds].sort((firstRound, secondRound) => firstRound.number - secondRound.number);
@@ -802,6 +803,7 @@ export default function AdminTournamentPage() {
     ? new Date(tournament.last_published_at).toLocaleString()
     : null;
   const publicPublishingConfigured = publicPublishingConfig?.configured;
+  const publicSiteUrl = publicPublishingConfig?.site_url || null;
 
   useEffect(() => {
     if (rounds.length === 0) {
@@ -908,13 +910,13 @@ export default function AdminTournamentPage() {
               </div>
               <div>
                 <p className="font-semibold text-gray-950">Public link</p>
-                <p className="break-all">{publicUrl}</p>
+                <p className="break-all">{displayPublicUrl}</p>
               </div>
             </div>
             <div className="mt-4 flex flex-wrap gap-2">
               <a
                 className="rounded-md bg-blue-700 px-3 py-2 text-sm font-medium text-white hover:bg-blue-800"
-                href={publicPath}
+                href={displayPublicUrl}
                 onClick={handleOpenPublicPage}
                 rel="noreferrer"
                 target="_blank"
@@ -932,7 +934,7 @@ export default function AdminTournamentPage() {
             </div>
           </div>
           <div className="w-fit rounded-lg border border-gray-200 bg-gray-50 p-3">
-            <QRCodeSVG value={publicUrl} size={144} />
+            <QRCodeSVG value={displayPublicUrl} size={144} />
           </div>
         </div>
       </section>
@@ -957,7 +959,7 @@ export default function AdminTournamentPage() {
             </div>
             <div>
               <p className="font-semibold text-slate-50">Public URL</p>
-              <p className="mt-1 break-all">{tournament?.public_url || "Not configured"}</p>
+              <p className="mt-1 break-all">{tournament?.public_url || "Publish to generate hosted URL"}</p>
             </div>
             <div>
               <p className="font-semibold text-slate-50">Last Published</p>
@@ -967,12 +969,12 @@ export default function AdminTournamentPage() {
 
           <div className="mt-4 grid gap-3 border-t border-slate-800 pt-4 text-sm text-slate-300 md:grid-cols-2">
             <div>
-              <p className="font-semibold text-slate-50">Publishing Service</p>
-              <p className="mt-1 break-all">{publicPublishingConfig?.service_url || "Not configured"}</p>
+              <p className="font-semibold text-slate-50">Public Site</p>
+              <p className="mt-1 break-all">{publicSiteUrl || "Not configured"}</p>
             </div>
             <div>
               <p className="font-semibold text-slate-50">Configuration</p>
-              <p className="mt-1">{publicPublishingConfigured ? "Ready" : "Missing service URL or publish key"}</p>
+              <p className="mt-1">{publicPublishingConfigured ? "Ready" : "Missing public service URL, public site URL, or publish key"}</p>
             </div>
           </div>
 
