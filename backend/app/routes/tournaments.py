@@ -36,12 +36,14 @@ from app.schemas import (
 
 router = APIRouter(prefix="/tournaments", tags=["tournaments"])
 KTS_BYE_VALUE = "***BYE***"
+KTS_ZERO_BYE_VALUE = "0"
 BYE_NOTE = "BYE"
+BYE_VALUES = {KTS_BYE_VALUE.casefold(), KTS_ZERO_BYE_VALUE, BYE_NOTE.casefold()}
 
 
 def is_bye(value: str | None) -> bool:
     normalized_value = (value or "").strip().casefold().replace(" ", "")
-    return normalized_value == KTS_BYE_VALUE.casefold()
+    return normalized_value in BYE_VALUES
 
 
 def xml_local_name(tag: str) -> str:

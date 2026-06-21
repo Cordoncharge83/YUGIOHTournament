@@ -26,6 +26,7 @@ export default function HostedPublicTournamentPage() {
         setTournamentData(null);
 
         const response = await fetch(`${PUBLIC_SERVICE_URL}/api/tournaments/${encodeURIComponent(publicId)}`, {
+          cache: "no-store",
           headers: {
             Accept: "application/json",
           },

@@ -8,6 +8,8 @@ from app.kts_watcher import kts_auto_sync_service
 from app.routes import auto_sync, matches, player_profiles, players, public, rounds, settings, tournaments
 from app.schemas import HealthCheck
 
+BACKEND_DEBUG_MARKER = "bye-normalization-2026-06-21"
+
 app = FastAPI(title="Yu-Gi-Oh Tournament Manager API")
 app.add_middleware(
     CORSMiddleware,
@@ -51,3 +53,13 @@ def on_shutdown() -> None:
 @app.get("/health", response_model=HealthCheck)
 def health_check() -> HealthCheck:
     return HealthCheck(status="ok")
+
+
+@app.get("/debug/runtime")
+def runtime_debug() -> dict:
+    return {
+        "backend_marker": BACKEND_DEBUG_MARKER,
+        "database_location": get_database_location(),
+        "app_data_dir": str(APP_DATA_PATH) if APP_DATA_PATH else None,
+        "bye_values": sorted(tournaments.BYE_VALUES),
+    }
