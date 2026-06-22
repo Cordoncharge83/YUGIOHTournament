@@ -104,12 +104,28 @@ export default function AdminTournamentPage() {
     return fallbackMessage;
   }
 
+  function getRoundNumberById(roundList, roundId) {
+    if (!roundId) {
+      return null;
+    }
+
+    return roundList.find((round) => round.id === roundId)?.number || null;
+  }
+
+  function getCurrentRoundFromData(tournamentData, roundList) {
+    return tournamentData?.current_round_id
+      ? roundList.find((round) => round.id === tournamentData.current_round_id) || null
+      : null;
+  }
+
   async function fetchTournament() {
     try {
       const response = await api.get(`/tournaments/${id}`);
       setTournament(response.data);
+      return response.data;
     } catch {
       setRoundsError("Could not load tournament.");
+      return null;
     }
   }
 
@@ -117,8 +133,10 @@ export default function AdminTournamentPage() {
     try {
       const response = await api.get(`/tournaments/${id}/players`);
       setPlayers(response.data);
+      return response.data;
     } catch {
       setPlayers([]);
+      return [];
     }
   }
 
@@ -127,8 +145,10 @@ export default function AdminTournamentPage() {
       setRoundsError("");
       const response = await api.get(`/tournaments/${id}/rounds`);
       setRounds(response.data);
+      return response.data;
     } catch {
       setRoundsError("Could not load rounds.");
+      return [];
     } finally {
       setIsLoadingRounds(false);
     }
@@ -139,8 +159,10 @@ export default function AdminTournamentPage() {
       setMatchesError("");
       const response = await api.get(`/tournaments/${id}/matches`);
       setMatches(response.data);
+      return response.data;
     } catch {
       setMatchesError("Could not load matches.");
+      return [];
     } finally {
       setIsLoadingMatches(false);
     }
@@ -150,8 +172,10 @@ export default function AdminTournamentPage() {
     try {
       const response = await api.get(`/tournaments/${id}/standings`);
       setStandings(response.data || []);
+      return response.data || [];
     } catch {
       setStandings([]);
+      return [];
     }
   }
 
@@ -173,14 +197,38 @@ export default function AdminTournamentPage() {
     }
   }
 
-  async function fetchTournamentContentData() {
-    await Promise.all([
+  async function fetchTournamentContentData({ reconcileKtsSyncRound = false } = {}) {
+    const previousCurrentRoundNumber = getRoundNumberById(rounds, tournament?.current_round_id);
+    const previousSelectedRoundNumber = getRoundNumberById(rounds, selectedMatchRoundId);
+
+    const [nextTournament, , nextRounds] = await Promise.all([
       fetchTournament(),
       fetchPlayers(),
       fetchRounds(),
       fetchMatches(),
       fetchStandings(),
     ]);
+
+    if (!reconcileKtsSyncRound || !nextTournament || nextRounds.length === 0) {
+      return;
+    }
+
+    const nextCurrentRound = getCurrentRoundFromData(nextTournament, nextRounds);
+    const currentRoundAdvanced =
+      nextCurrentRound &&
+      (previousCurrentRoundNumber == null || nextCurrentRound.number > previousCurrentRoundNumber);
+
+    if (currentRoundAdvanced) {
+      setSelectedMatchRoundId(nextCurrentRound.id);
+      return;
+    }
+
+    if (previousSelectedRoundNumber != null) {
+      const replacementSelectedRound = nextRounds.find((round) => round.number === previousSelectedRoundNumber);
+      if (replacementSelectedRound) {
+        setSelectedMatchRoundId(replacementSelectedRound.id);
+      }
+    }
   }
 
   async function fetchTournamentDetailData() {
@@ -206,7 +254,8 @@ export default function AdminTournamentPage() {
 
     const syncResponse = await api.post("/auto-sync/run-now");
     setAutoSyncStatus(syncResponse.data.status);
-    await fetchTournamentDetailData();
+    await fetchTournamentContentData({ reconcileKtsSyncRound: true });
+    await Promise.all([fetchAutoSyncStatus(), fetchPublicPublishingConfig()]);
     return syncResponse.data.summary;
   }
 
@@ -326,7 +375,8 @@ export default function AdminTournamentPage() {
       setAutoSyncMessage("");
       const response = await api.post("/auto-sync/run-now");
       setAutoSyncStatus(response.data.status);
-      await fetchTournamentDetailData();
+      await fetchTournamentContentData({ reconcileKtsSyncRound: true });
+      await fetchPublicPublishingConfig();
       setAutoSyncMessage(
         `Synced ${response.data.summary.players_imported} players, ${response.data.summary.rounds_imported} rounds, ${response.data.summary.matches_imported} matches, and ${response.data.summary.standings_imported} standings entries.`,
       );
@@ -360,7 +410,7 @@ export default function AdminTournamentPage() {
     }
 
     lastHandledAutoSyncAtRef.current = lastSyncAt;
-    fetchTournamentContentData();
+    fetchTournamentContentData({ reconcileKtsSyncRound: true });
   }, [autoSyncStatus?.last_sync_at, autoSyncStatus?.enabled, autoSyncStatus?.tournament_id, id]);
 
   useEffect(() => {
