@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { Link } from "react-router-dom";
-import { CalendarDays, MapPin, Plus, RefreshCw, Settings, Share2, Trash2, Users } from "lucide-react";
+import { CalendarDays, MapPin, Plus, RefreshCw, Share2, Trash2 } from "lucide-react";
 
 import api, { getApiErrorMessage } from "../api/client";
 import { Badge } from "../components/ui/badge";
@@ -109,20 +109,6 @@ export default function AdminPage() {
           <p className="mt-2 max-w-2xl text-sm text-slate-400">
             Create, manage, and share local Yu-Gi-Oh tournament events.
           </p>
-        </div>
-        <div className="flex flex-wrap gap-2 self-start sm:self-auto">
-          <Button asChild variant="outline">
-            <Link to="/admin/settings/publishing">
-              <Settings className="h-4 w-4" />
-              Publishing Settings
-            </Link>
-          </Button>
-          <Button asChild variant="outline">
-            <Link to="/admin/players">
-              <Users className="h-4 w-4" />
-              Community Players
-            </Link>
-          </Button>
         </div>
       </header>
 

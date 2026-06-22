@@ -4,7 +4,7 @@ use std::{
     env,
     fs,
     net::{SocketAddr, TcpStream},
-    path::PathBuf,
+    path::{Path, PathBuf},
     process::{Child, Command, Stdio},
     sync::Mutex,
     time::Duration,
@@ -15,10 +15,17 @@ use std::collections::HashMap;
 
 use tauri::Manager;
 
-#[cfg(all(windows, not(debug_assertions)))]
+#[derive(serde::Deserialize, serde::Serialize, Default)]
+struct LocalSettings {
+    kts_executable_path: Option<String>,
+    #[serde(flatten)]
+    extra: serde_json::Map<String, serde_json::Value>,
+}
+
+#[cfg(windows)]
 use std::os::windows::process::CommandExt;
 
-#[cfg(all(windows, not(debug_assertions)))]
+#[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
 
 struct BackendProcess {
@@ -29,6 +36,12 @@ fn main() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        .invoke_handler(tauri::generate_handler![
+            get_kts_executable_path,
+            set_kts_executable_path,
+            clear_kts_executable_path,
+            launch_kts,
+        ])
         .setup(|app| {
             let backend_child = start_backend(app);
             app.manage(BackendProcess {
@@ -45,6 +58,42 @@ fn main() {
             stop_backend_if_started(&app_handle.state::<BackendProcess>());
         }
     });
+}
+
+#[tauri::command]
+fn get_kts_executable_path() -> Result<Option<String>, String> {
+    Ok(read_local_settings()?.kts_executable_path)
+}
+
+#[tauri::command]
+fn set_kts_executable_path(path: String) -> Result<String, String> {
+    let executable_path = validate_kts_executable_path(&path)?;
+    let mut settings = read_local_settings()?;
+    settings.kts_executable_path = Some(executable_path.clone());
+    write_local_settings(&settings)?;
+    Ok(executable_path)
+}
+
+#[tauri::command]
+fn clear_kts_executable_path() -> Result<(), String> {
+    let mut settings = read_local_settings()?;
+    settings.kts_executable_path = None;
+    write_local_settings(&settings)
+}
+
+#[tauri::command]
+fn launch_kts(path: String) -> Result<(), String> {
+    let executable_path = validate_kts_executable_path(&path)?;
+    let mut command = Command::new(executable_path);
+    command
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+
+    #[cfg(windows)]
+    command.creation_flags(CREATE_NO_WINDOW);
+
+    command.spawn().map(|_| ()).map_err(|error| format!("Could not launch KTS: {error}"))
 }
 
 fn start_backend(app: &tauri::App) -> Option<Child> {
@@ -279,6 +328,64 @@ fn ensure_desktop_app_data_dir(app_data_dir: &PathBuf) -> std::io::Result<()> {
     }
 
     Ok(())
+}
+
+fn local_settings_path() -> Result<PathBuf, String> {
+    let app_data_dir = desktop_app_data_dir();
+    ensure_desktop_app_data_dir(&app_data_dir)
+        .map_err(|error| format!("Could not prepare app settings directory: {error}"))?;
+    Ok(app_data_dir.join("settings.json"))
+}
+
+fn read_local_settings() -> Result<LocalSettings, String> {
+    let settings_path = local_settings_path()?;
+    let contents = fs::read_to_string(&settings_path).unwrap_or_else(|_| "{}".to_string());
+    serde_json::from_str(&contents).map_err(|error| {
+        format!(
+            "Could not read local settings from {}: {error}",
+            settings_path.display()
+        )
+    })
+}
+
+fn write_local_settings(settings: &LocalSettings) -> Result<(), String> {
+    let settings_path = local_settings_path()?;
+    let contents = serde_json::to_string_pretty(settings)
+        .map_err(|error| format!("Could not serialize local settings: {error}"))?;
+    fs::write(&settings_path, format!("{contents}\n")).map_err(|error| {
+        format!(
+            "Could not save local settings to {}: {error}",
+            settings_path.display()
+        )
+    })
+}
+
+fn validate_kts_executable_path(path: &str) -> Result<String, String> {
+    let executable_path = PathBuf::from(path.trim());
+    if executable_path.as_os_str().is_empty() {
+        return Err("Choose the KTS executable first.".to_string());
+    }
+
+    if !executable_path.exists() {
+        return Err("The configured KTS executable does not exist.".to_string());
+    }
+
+    if !executable_path.is_file() {
+        return Err("The configured KTS path must point to a file.".to_string());
+    }
+
+    if !has_exe_extension(&executable_path) {
+        return Err("Choose a Windows .exe file for KTS.".to_string());
+    }
+
+    Ok(executable_path.to_string_lossy().to_string())
+}
+
+fn has_exe_extension(path: &Path) -> bool {
+    path.extension()
+        .and_then(|extension| extension.to_str())
+        .map(|extension| extension.eq_ignore_ascii_case("exe"))
+        .unwrap_or(false)
 }
 
 fn sqlite_database_url(database_path: &PathBuf) -> String {

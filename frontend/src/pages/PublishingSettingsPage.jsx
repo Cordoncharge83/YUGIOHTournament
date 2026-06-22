@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { ArrowLeft, CheckCircle2, PlugZap, Save } from "lucide-react";
 
 import api, { getApiErrorMessage } from "../api/client";
+import KtsLauncher from "../components/KtsLauncher.jsx";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
@@ -26,7 +27,7 @@ export default function PublishingSettingsPage() {
       const response = await api.get("/settings/publishing");
       applySettings(response.data);
     } catch (fetchError) {
-      setError(getApiErrorMessage(fetchError, "Could not load publishing settings."));
+      setError(getApiErrorMessage(fetchError, "Could not load settings."));
     } finally {
       setIsLoading(false);
     }
@@ -84,9 +85,9 @@ export default function PublishingSettingsPage() {
       <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-sm font-medium uppercase tracking-wide text-sky-300">Settings</p>
-          <h1 className="mt-2 text-3xl font-semibold text-slate-50">Publishing Settings</h1>
+          <h1 className="mt-2 text-3xl font-semibold text-slate-50">Settings</h1>
           <p className="mt-2 max-w-2xl text-sm text-slate-400">
-            Configure the hosted public page connection used when tournaments are published.
+            Configure local desktop integrations and hosted public publishing.
           </p>
         </div>
         <Button asChild className="self-start sm:self-auto" variant="outline">
@@ -101,7 +102,7 @@ export default function PublishingSettingsPage() {
         <CardHeader>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <CardTitle>Hosted Publishing</CardTitle>
+              <CardTitle>Publishing Settings</CardTitle>
               <CardDescription>These values are stored locally on this computer.</CardDescription>
             </div>
             <Badge variant={isConfigured ? "default" : "secondary"}>
@@ -171,6 +172,16 @@ export default function PublishingSettingsPage() {
 
           {message ? <p className="mt-4 text-sm font-medium text-emerald-300">{message}</p> : null}
           {error ? <p className="mt-4 text-sm font-medium text-rose-300">{error}</p> : null}
+        </CardContent>
+      </Card>
+
+      <Card className="border-slate-700/70 bg-slate-950/85">
+        <CardHeader>
+          <CardTitle>KTS Integration</CardTitle>
+          <CardDescription>The executable path is stored locally on this computer.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <KtsLauncher variant="settings" />
         </CardContent>
       </Card>
     </main>
