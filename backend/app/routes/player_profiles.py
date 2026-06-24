@@ -16,14 +16,28 @@ router = APIRouter(prefix="/player-profiles", tags=["player-profiles"])
 
 def build_profile_summary(db: Session, profile: PlayerProfile) -> PlayerProfileSummaryRead:
     tournaments_played = db.scalar(
-        select(func.count(distinct(Player.tournament_id))).where(Player.player_profile_id == profile.id)
+        select(func.count(distinct(Player.tournament_id)))
+        .join(Tournament, Tournament.id == Player.tournament_id)
+        .where(Player.player_profile_id == profile.id)
+        .where(Tournament.counts_toward_community_stats.is_(True))
     ) or 0
-    total_points = db.scalar(select(func.coalesce(func.sum(Standing.points), 0)).where(Standing.player_profile_id == profile.id)) or 0
-    best_rank = db.scalar(select(func.min(Standing.rank)).where(Standing.player_profile_id == profile.id))
+    total_points = db.scalar(
+        select(func.coalesce(func.sum(Standing.points), 0))
+        .join(Tournament, Tournament.id == Standing.tournament_id)
+        .where(Standing.player_profile_id == profile.id)
+        .where(Tournament.counts_toward_community_stats.is_(True))
+    ) or 0
+    best_rank = db.scalar(
+        select(func.min(Standing.rank))
+        .join(Tournament, Tournament.id == Standing.tournament_id)
+        .where(Standing.player_profile_id == profile.id)
+        .where(Tournament.counts_toward_community_stats.is_(True))
+    )
     last_tournament_date = db.scalar(
         select(func.max(Tournament.created_at))
         .join(Player, Player.tournament_id == Tournament.id)
         .where(Player.player_profile_id == profile.id)
+        .where(Tournament.counts_toward_community_stats.is_(True))
     )
     average_points = float(total_points) / tournaments_played if tournaments_played else 0.0
 
@@ -63,6 +77,7 @@ def get_player_profile(profile_id: int, db: Session = Depends(get_db)) -> Player
         )
         .join(Standing, Standing.tournament_id == Tournament.id)
         .where(Standing.player_profile_id == profile.id)
+        .where(Tournament.counts_toward_community_stats.is_(True))
         .order_by(Tournament.created_at.desc(), Tournament.id.desc())
     ).all()
     tournament_history = [

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -15,6 +15,7 @@ class Tournament(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     location: Mapped[str | None] = mapped_column(String(255))
     current_round_id: Mapped[int | None] = mapped_column(ForeignKey("rounds.id"))
+    counts_toward_community_stats: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="1")
     kts_file_path: Mapped[str | None] = mapped_column(Text)
     publish_status: Mapped[str] = mapped_column(String(32), nullable=False, default="draft", server_default="draft")
     public_id: Mapped[str | None] = mapped_column(String(128), unique=True, index=True)
@@ -28,6 +29,7 @@ class Tournament(Base):
     current_round: Mapped[Round | None] = relationship(foreign_keys=[current_round_id])
     matches: Mapped[list[Match]] = relationship(back_populates="tournament")
     standings: Mapped[list[Standing]] = relationship(back_populates="tournament")
+    playoff_brackets: Mapped[list[PlayoffBracket]] = relationship(back_populates="tournament")
 
 
 class PlayerProfile(Base):
@@ -124,3 +126,52 @@ class Standing(Base):
 
     tournament: Mapped[Tournament] = relationship(back_populates="standings")
     player_profile: Mapped[PlayerProfile | None] = relationship(back_populates="standings")
+
+
+class PlayoffBracket(Base):
+    __tablename__ = "playoff_brackets"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    tournament_id: Mapped[int] = mapped_column(ForeignKey("tournaments.id"), nullable=False, index=True)
+    size: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="active", server_default="active")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    tournament: Mapped[Tournament] = relationship(back_populates="playoff_brackets")
+    matches: Mapped[list[PlayoffMatch]] = relationship(
+        back_populates="bracket",
+        cascade="all, delete-orphan",
+    )
+
+
+class PlayoffMatch(Base):
+    __tablename__ = "playoff_matches"
+    __table_args__ = (UniqueConstraint("bracket_id", "round_index", "match_index"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    bracket_id: Mapped[int] = mapped_column(ForeignKey("playoff_brackets.id"), nullable=False, index=True)
+    round_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    match_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    player_one_profile_id: Mapped[int | None] = mapped_column(ForeignKey("player_profiles.id"))
+    player_two_profile_id: Mapped[int | None] = mapped_column(ForeignKey("player_profiles.id"))
+    player_one_name: Mapped[str | None] = mapped_column(String(255))
+    player_two_name: Mapped[str | None] = mapped_column(String(255))
+    player_one_seed: Mapped[int | None] = mapped_column(Integer)
+    player_two_seed: Mapped[int | None] = mapped_column(Integer)
+    winner_profile_id: Mapped[int | None] = mapped_column(ForeignKey("player_profiles.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    bracket: Mapped[PlayoffBracket] = relationship(back_populates="matches")
+    player_one_profile: Mapped[PlayerProfile | None] = relationship(foreign_keys=[player_one_profile_id])
+    player_two_profile: Mapped[PlayerProfile | None] = relationship(foreign_keys=[player_two_profile_id])
+    winner_profile: Mapped[PlayerProfile | None] = relationship(foreign_keys=[winner_profile_id])

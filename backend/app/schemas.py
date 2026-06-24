@@ -5,6 +5,7 @@ from pydantic import BaseModel
 
 MatchResultStatus = Literal["PLAYER_ONE_WIN", "PLAYER_TWO_WIN", "DRAW", "DOUBLE_LOSS", "UNREPORTED"]
 PublishStatus = Literal["draft", "published", "unpublished"]
+PlayoffBracketStatus = Literal["active", "completed"]
 
 
 class HealthCheck(BaseModel):
@@ -40,6 +41,7 @@ class TournamentRead(BaseModel):
     name: str
     location: str | None
     current_round_id: int | None
+    counts_toward_community_stats: bool
     kts_file_path: str | None
     publish_status: PublishStatus
     public_id: str | None
@@ -63,6 +65,10 @@ class PublicTournamentSummaryRead(BaseModel):
 
 class TournamentCurrentRoundUpdate(BaseModel):
     round_id: int
+
+
+class TournamentCommunityStatsUpdate(BaseModel):
+    counts_toward_community_stats: bool
 
 
 class TournamentPublishStatusRead(BaseModel):
@@ -204,6 +210,40 @@ class StandingRead(BaseModel):
     tiebreaker: str | None
 
     model_config = {"from_attributes": True}
+
+
+class PlayoffCreate(BaseModel):
+    size: Literal[4, 8, 16]
+
+
+class PlayoffWinnerUpdate(BaseModel):
+    winner_player_id: int
+
+
+class PlayoffMatchRead(BaseModel):
+    id: int
+    bracket_id: int
+    round_index: int
+    match_index: int
+    player_one_id: int | None
+    player_two_id: int | None
+    player_one_name: str | None
+    player_two_name: str | None
+    player_one_seed: int | None
+    player_two_seed: int | None
+    winner_player_id: int | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class PlayoffBracketRead(BaseModel):
+    id: int
+    tournament_id: int
+    size: int
+    status: PlayoffBracketStatus
+    created_at: datetime
+    updated_at: datetime
+    matches: list[PlayoffMatchRead]
 
 
 class PlayerProfileRead(BaseModel):

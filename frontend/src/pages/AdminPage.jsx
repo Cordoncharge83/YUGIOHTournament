@@ -177,6 +177,11 @@ export default function AdminPage() {
                       <div className="flex flex-wrap items-center gap-2">
                         <h3 className="truncate text-base font-semibold text-slate-50">{tournament.name}</h3>
                         <Badge variant="secondary">#{tournament.id}</Badge>
+                        {tournament.counts_toward_community_stats === false ? (
+                          <Badge className="border-amber-400/35 bg-amber-400/10 text-amber-200">
+                            Stats excluded
+                          </Badge>
+                        ) : null}
                       </div>
                       <div className="mt-2 flex flex-wrap gap-3 text-sm text-slate-400">
                         <span className="inline-flex items-center gap-1">

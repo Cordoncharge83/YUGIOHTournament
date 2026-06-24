@@ -93,6 +93,9 @@ def create_db_tables() -> None:
         if "kts_file_path" not in tournament_columns:
             with engine.begin() as connection:
                 connection.execute(text("ALTER TABLE tournaments ADD COLUMN kts_file_path TEXT"))
+        if "counts_toward_community_stats" not in tournament_columns:
+            with engine.begin() as connection:
+                connection.execute(text("ALTER TABLE tournaments ADD COLUMN counts_toward_community_stats BOOLEAN NOT NULL DEFAULT 1"))
         if "publish_status" not in tournament_columns:
             with engine.begin() as connection:
                 connection.execute(text("ALTER TABLE tournaments ADD COLUMN publish_status VARCHAR(32) NOT NULL DEFAULT 'draft'"))

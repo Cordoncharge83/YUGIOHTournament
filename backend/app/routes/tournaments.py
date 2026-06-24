@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Match, Player, PlayerProfile, Round, Standing, Tournament
+from app.models import Match, Player, PlayerProfile, PlayoffBracket, PlayoffMatch, Round, Standing, Tournament
 from app.player_profiles import get_or_create_player_profile
 from app.public_publishing_client import (
     PublicPublishingConfigurationError,
@@ -25,10 +25,15 @@ from app.schemas import (
     PublicPublishingConfigRead,
     RoundCsvImportSummary,
     RoundCsvPreviewSummary,
+    PlayoffBracketRead,
+    PlayoffCreate,
+    PlayoffMatchRead,
+    PlayoffWinnerUpdate,
     StandingRead,
     StandingsCsvImportSummary,
     TournamentPublishStatusRead,
     TournamentCreate,
+    TournamentCommunityStatsUpdate,
     TournamentCurrentRoundUpdate,
     TournamentFileImportSummary,
     TournamentRead,
@@ -39,6 +44,11 @@ KTS_BYE_VALUE = "***BYE***"
 KTS_ZERO_BYE_VALUE = "0"
 BYE_NOTE = "BYE"
 BYE_VALUES = {KTS_BYE_VALUE.casefold(), KTS_ZERO_BYE_VALUE, BYE_NOTE.casefold()}
+PLAYOFF_SEED_PAIRINGS = {
+    4: [(1, 4), (2, 3)],
+    8: [(1, 8), (4, 5), (3, 6), (2, 7)],
+    16: [(1, 16), (8, 9), (5, 12), (4, 13), (3, 14), (6, 11), (7, 10), (2, 15)],
+}
 
 
 def is_bye(value: str | None) -> bool:
@@ -145,6 +155,125 @@ def kts_result_status(status_value: str | None, winner_id: str | None, player_on
         return "PLAYER_TWO_WIN"
 
     return "UNREPORTED"
+
+
+def playoff_match_read(match: PlayoffMatch) -> PlayoffMatchRead:
+    return PlayoffMatchRead(
+        id=match.id,
+        bracket_id=match.bracket_id,
+        round_index=match.round_index,
+        match_index=match.match_index,
+        player_one_id=match.player_one_profile_id,
+        player_two_id=match.player_two_profile_id,
+        player_one_name=match.player_one_name,
+        player_two_name=match.player_two_name,
+        player_one_seed=match.player_one_seed,
+        player_two_seed=match.player_two_seed,
+        winner_player_id=match.winner_profile_id,
+        created_at=match.created_at,
+        updated_at=match.updated_at,
+    )
+
+
+def playoff_bracket_read(bracket: PlayoffBracket) -> PlayoffBracketRead:
+    return PlayoffBracketRead(
+        id=bracket.id,
+        tournament_id=bracket.tournament_id,
+        size=bracket.size,
+        status=bracket.status,
+        created_at=bracket.created_at,
+        updated_at=bracket.updated_at,
+        matches=[
+            playoff_match_read(match)
+            for match in sorted(bracket.matches, key=lambda item: (item.round_index, item.match_index))
+        ],
+    )
+
+
+def get_tournament_playoff_bracket(db: Session, tournament_id: int) -> PlayoffBracket | None:
+    return db.scalar(
+        select(PlayoffBracket)
+        .where(PlayoffBracket.tournament_id == tournament_id)
+        .order_by(PlayoffBracket.id)
+        .limit(1)
+    )
+
+
+def playoff_slot_for_winner(match: PlayoffMatch) -> dict[str, int | str | None]:
+    if match.winner_profile_id == match.player_one_profile_id:
+        return {
+            "profile_id": match.player_one_profile_id,
+            "name": match.player_one_name,
+            "seed": match.player_one_seed,
+        }
+    if match.winner_profile_id == match.player_two_profile_id:
+        return {
+            "profile_id": match.player_two_profile_id,
+            "name": match.player_two_name,
+            "seed": match.player_two_seed,
+        }
+
+    return {"profile_id": None, "name": None, "seed": None}
+
+
+def set_playoff_match_slot(match: PlayoffMatch, slot: int, player: dict[str, int | str | None]) -> None:
+    if slot == 0:
+        match.player_one_profile_id = player["profile_id"]
+        match.player_one_name = player["name"]
+        match.player_one_seed = player["seed"]
+    else:
+        match.player_two_profile_id = player["profile_id"]
+        match.player_two_name = player["name"]
+        match.player_two_seed = player["seed"]
+
+
+def recompute_playoff_advancement(bracket: PlayoffBracket) -> None:
+    matches_by_round: dict[int, list[PlayoffMatch]] = {}
+    for match in bracket.matches:
+        matches_by_round.setdefault(match.round_index, []).append(match)
+
+    round_indexes = sorted(matches_by_round)
+    for round_index in round_indexes:
+        matches_by_round[round_index].sort(key=lambda item: item.match_index)
+
+    for round_index in round_indexes[1:]:
+        for match in matches_by_round[round_index]:
+            set_playoff_match_slot(match, 0, {"profile_id": None, "name": None, "seed": None})
+            set_playoff_match_slot(match, 1, {"profile_id": None, "name": None, "seed": None})
+
+    for round_index in round_indexes[:-1]:
+        next_round_matches = matches_by_round[round_index + 1]
+        for match in matches_by_round[round_index]:
+            winner = playoff_slot_for_winner(match)
+            next_match = next_round_matches[match.match_index // 2]
+            set_playoff_match_slot(next_match, match.match_index % 2, winner)
+
+        for next_match in next_round_matches:
+            valid_winners = {next_match.player_one_profile_id, next_match.player_two_profile_id}
+            if (
+                next_match.player_one_profile_id is None
+                or next_match.player_two_profile_id is None
+                or next_match.winner_profile_id not in valid_winners
+            ):
+                next_match.winner_profile_id = None
+
+    final_match = matches_by_round[round_indexes[-1]][0]
+    bracket.status = "completed" if final_match.winner_profile_id is not None else "active"
+
+
+def clear_downstream_playoff_winners(bracket: PlayoffBracket, changed_match: PlayoffMatch) -> None:
+    matches_by_round: dict[int, list[PlayoffMatch]] = {}
+    for match in bracket.matches:
+        matches_by_round.setdefault(match.round_index, []).append(match)
+
+    for round_matches in matches_by_round.values():
+        round_matches.sort(key=lambda item: item.match_index)
+
+    current_match = changed_match
+    while current_match.round_index + 1 in matches_by_round:
+        next_match = matches_by_round[current_match.round_index + 1][current_match.match_index // 2]
+        next_match.winner_profile_id = None
+        current_match = next_match
 
 
 async def read_xml_upload(file: UploadFile) -> Element:
@@ -554,6 +683,10 @@ def delete_tournament(tournament_id: int, db: Session = Depends(get_db)) -> dict
     tournament.current_round_id = None
     db.flush()
 
+    for playoff_bracket in list(db.scalars(select(PlayoffBracket).where(PlayoffBracket.tournament_id == tournament_id))):
+        db.delete(playoff_bracket)
+    db.flush()
+
     for match in list(db.scalars(select(Match).where(Match.tournament_id == tournament_id))):
         db.delete(match)
     for standing in list(db.scalars(select(Standing).where(Standing.tournament_id == tournament_id))):
@@ -582,6 +715,139 @@ def list_tournament_standings(tournament_id: int, db: Session = Depends(get_db))
 
     statement = select(Standing).where(Standing.tournament_id == tournament_id).order_by(Standing.rank)
     return list(db.scalars(statement))
+
+
+@router.get("/{tournament_id}/playoffs", response_model=PlayoffBracketRead | None)
+def get_playoffs(tournament_id: int, db: Session = Depends(get_db)) -> PlayoffBracketRead | None:
+    tournament = db.get(Tournament, tournament_id)
+    if tournament is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
+
+    bracket = get_tournament_playoff_bracket(db, tournament_id)
+    return playoff_bracket_read(bracket) if bracket is not None else None
+
+
+@router.post("/{tournament_id}/playoffs", response_model=PlayoffBracketRead, status_code=status.HTTP_201_CREATED)
+def create_playoffs(
+    tournament_id: int,
+    playoff_data: PlayoffCreate,
+    db: Session = Depends(get_db),
+) -> PlayoffBracketRead:
+    tournament = db.get(Tournament, tournament_id)
+    if tournament is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
+
+    if get_tournament_playoff_bracket(db, tournament_id) is not None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This tournament already has a playoff bracket. Delete it before creating another.",
+        )
+
+    standings = list(
+        db.scalars(
+            select(Standing)
+            .where(Standing.tournament_id == tournament_id)
+            .order_by(Standing.rank)
+        )
+    )
+    if len(standings) < playoff_data.size:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Top {playoff_data.size} requires at least {playoff_data.size} standings players.",
+        )
+
+    seeded_players = {
+        seed: standing
+        for seed, standing in enumerate(standings[: playoff_data.size], start=1)
+    }
+    if any(standing.player_profile_id is None for standing in seeded_players.values()):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Every seeded standings player must have a player profile before creating playoffs.",
+        )
+
+    bracket = PlayoffBracket(tournament_id=tournament_id, size=playoff_data.size)
+    db.add(bracket)
+    db.flush()
+
+    for match_index, (player_one_seed, player_two_seed) in enumerate(PLAYOFF_SEED_PAIRINGS[playoff_data.size]):
+        player_one = seeded_players[player_one_seed]
+        player_two = seeded_players[player_two_seed]
+        db.add(
+            PlayoffMatch(
+                bracket_id=bracket.id,
+                round_index=0,
+                match_index=match_index,
+                player_one_profile_id=player_one.player_profile_id,
+                player_two_profile_id=player_two.player_profile_id,
+                player_one_name=player_one.short_name or player_one.full_name,
+                player_two_name=player_two.short_name or player_two.full_name,
+                player_one_seed=player_one_seed,
+                player_two_seed=player_two_seed,
+            )
+        )
+
+    round_index = 1
+    match_count = playoff_data.size // 4
+    while match_count >= 1:
+        for match_index in range(match_count):
+            db.add(PlayoffMatch(bracket_id=bracket.id, round_index=round_index, match_index=match_index))
+        round_index += 1
+        match_count //= 2
+
+    db.commit()
+    db.refresh(bracket)
+    return playoff_bracket_read(bracket)
+
+
+@router.put("/{tournament_id}/playoffs/matches/{match_id}/winner", response_model=PlayoffBracketRead)
+def update_playoff_winner(
+    tournament_id: int,
+    match_id: int,
+    winner_data: PlayoffWinnerUpdate,
+    db: Session = Depends(get_db),
+) -> PlayoffBracketRead:
+    tournament = db.get(Tournament, tournament_id)
+    if tournament is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
+
+    bracket = get_tournament_playoff_bracket(db, tournament_id)
+    if bracket is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Playoff bracket not found")
+
+    match = next((item for item in bracket.matches if item.id == match_id), None)
+    if match is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Playoff match not found")
+
+    if match.player_one_profile_id is None or match.player_two_profile_id is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Both playoff match players must be known first.")
+
+    valid_winner_ids = {match.player_one_profile_id, match.player_two_profile_id}
+    if winner_data.winner_player_id not in valid_winner_ids:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Winner must be one of this playoff match's players.")
+
+    previous_winner_id = match.winner_profile_id
+    match.winner_profile_id = winner_data.winner_player_id
+    if previous_winner_id is not None and previous_winner_id != winner_data.winner_player_id:
+        clear_downstream_playoff_winners(bracket, match)
+    recompute_playoff_advancement(bracket)
+    db.commit()
+    db.refresh(bracket)
+    return playoff_bracket_read(bracket)
+
+
+@router.delete("/{tournament_id}/playoffs")
+def delete_playoffs(tournament_id: int, db: Session = Depends(get_db)) -> dict[str, bool]:
+    tournament = db.get(Tournament, tournament_id)
+    if tournament is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
+
+    bracket = get_tournament_playoff_bracket(db, tournament_id)
+    if bracket is not None:
+        db.delete(bracket)
+        db.commit()
+
+    return {"deleted": True}
 
 
 @router.get("/{tournament_id}/public-snapshot", response_model=PublicTournamentSnapshotRead)
@@ -668,6 +934,22 @@ def update_current_round(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Round does not belong to tournament")
 
     tournament.current_round_id = round_.id
+    db.commit()
+    db.refresh(tournament)
+    return tournament
+
+
+@router.patch("/{tournament_id}/community-stats", response_model=TournamentRead)
+def update_community_stats_inclusion(
+    tournament_id: int,
+    community_stats_data: TournamentCommunityStatsUpdate,
+    db: Session = Depends(get_db),
+) -> Tournament:
+    tournament = db.get(Tournament, tournament_id)
+    if tournament is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
+
+    tournament.counts_toward_community_stats = community_stats_data.counts_toward_community_stats
     db.commit()
     db.refresh(tournament)
     return tournament

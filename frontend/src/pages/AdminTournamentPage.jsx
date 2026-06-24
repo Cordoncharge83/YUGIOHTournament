@@ -26,6 +26,212 @@ function isTauriApp() {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 }
 
+const BRACKET_CARD_WIDTH = 256;
+const BRACKET_CARD_HEIGHT = 98;
+const BRACKET_COLUMN_GAP = 96;
+const BRACKET_ROW_GAP = 28;
+const BRACKET_ROW_PITCH = BRACKET_CARD_HEIGHT + BRACKET_ROW_GAP;
+const BRACKET_HEADER_HEIGHT = 34;
+const BRACKET_SIDE_PADDING = 8;
+const BRACKET_CHAMPION_WIDTH = 220;
+
+function getPlayoffRoundName(bracketSize, roundIndex) {
+  const matchCount = bracketSize / (2 ** (roundIndex + 1));
+  if (matchCount === 8) return "Round of 16";
+  if (matchCount === 4) return "Quarterfinals";
+  if (matchCount === 2) return "Semifinals";
+  return "Final";
+}
+
+function buildPlayoffRounds(playoffBracket) {
+  if (!playoffBracket) {
+    return [];
+  }
+
+  return [...new Set(playoffBracket.matches.map((match) => match.round_index))]
+    .sort((firstRound, secondRound) => firstRound - secondRound)
+    .map((roundIndex) => ({
+      roundIndex,
+      matches: playoffBracket.matches
+        .filter((match) => match.round_index === roundIndex)
+        .sort((firstMatch, secondMatch) => firstMatch.match_index - secondMatch.match_index),
+    }));
+}
+
+function PlayoffBracketView({ playoffBracket, savingPlayoffMatchId, onSetWinner }) {
+  const playoffRounds = buildPlayoffRounds(playoffBracket);
+  const firstRoundMatchCount = playoffRounds[0]?.matches.length || 0;
+  const roundCount = playoffRounds.length;
+  const championMatch = playoffBracket.matches.find(
+    (match) => match.round_index === roundCount - 1 && match.winner_player_id,
+  );
+  const championName = championMatch?.winner_player_id === championMatch?.player_one_id
+    ? championMatch?.player_one_name
+    : championMatch?.player_two_name;
+  const boardHeight = BRACKET_HEADER_HEIGHT + Math.max(firstRoundMatchCount, 1) * BRACKET_ROW_PITCH - BRACKET_ROW_GAP;
+  const boardWidth = (
+    roundCount * BRACKET_CARD_WIDTH
+    + Math.max(roundCount - 1, 0) * BRACKET_COLUMN_GAP
+    + BRACKET_CHAMPION_WIDTH
+    + BRACKET_COLUMN_GAP
+    + BRACKET_SIDE_PADDING * 2
+  );
+
+  const cardPosition = (roundIndex, matchIndex) => {
+    const left = BRACKET_SIDE_PADDING + roundIndex * (BRACKET_CARD_WIDTH + BRACKET_COLUMN_GAP);
+    const blockSize = 2 ** roundIndex;
+    const sourceCenterIndex = matchIndex * blockSize + (blockSize - 1) / 2;
+    const top = BRACKET_HEADER_HEIGHT + sourceCenterIndex * BRACKET_ROW_PITCH;
+    return { left, top };
+  };
+
+  const cardCenterY = (roundIndex, matchIndex) => cardPosition(roundIndex, matchIndex).top + BRACKET_CARD_HEIGHT / 2;
+  const connectors = playoffRounds.slice(1).flatMap((round) => (
+    round.matches.map((match) => {
+      const targetPosition = cardPosition(round.roundIndex, match.match_index);
+      const sourceRoundIndex = round.roundIndex - 1;
+      const firstSourceIndex = match.match_index * 2;
+      const secondSourceIndex = firstSourceIndex + 1;
+      const sourceX = BRACKET_SIDE_PADDING + sourceRoundIndex * (BRACKET_CARD_WIDTH + BRACKET_COLUMN_GAP) + BRACKET_CARD_WIDTH;
+      const targetX = targetPosition.left;
+      const elbowX = sourceX + (targetX - sourceX) / 2;
+      const firstY = cardCenterY(sourceRoundIndex, firstSourceIndex);
+      const secondY = cardCenterY(sourceRoundIndex, secondSourceIndex);
+      const targetY = targetPosition.top + BRACKET_CARD_HEIGHT / 2;
+
+      return {
+        key: `${round.roundIndex}-${match.match_index}`,
+        sourceX,
+        elbowX,
+        targetX,
+        firstY,
+        secondY,
+        targetY,
+      };
+    })
+  ));
+  const championLeft = BRACKET_SIDE_PADDING + roundCount * (BRACKET_CARD_WIDTH + BRACKET_COLUMN_GAP);
+  const finalCenterY = cardCenterY(roundCount - 1, 0);
+
+  return (
+    <div className="overflow-x-auto">
+      <div className="playoff-bracket-board" style={{ height: boardHeight, width: boardWidth }}>
+        {playoffRounds.map((round) => (
+          <h3
+            className="playoff-round-heading"
+            key={`heading-${round.roundIndex}`}
+            style={{ left: cardPosition(round.roundIndex, 0).left, width: BRACKET_CARD_WIDTH }}
+          >
+            {getPlayoffRoundName(playoffBracket.size, round.roundIndex)}
+          </h3>
+        ))}
+
+        {connectors.map((connector) => (
+          <div className="playoff-connector-group" key={connector.key}>
+            <span
+              className="playoff-connector playoff-connector-horizontal"
+              style={{
+                left: connector.sourceX,
+                top: connector.firstY,
+                width: connector.elbowX - connector.sourceX,
+              }}
+            />
+            <span
+              className="playoff-connector playoff-connector-horizontal"
+              style={{
+                left: connector.sourceX,
+                top: connector.secondY,
+                width: connector.elbowX - connector.sourceX,
+              }}
+            />
+            <span
+              className="playoff-connector playoff-connector-vertical"
+              style={{
+                height: Math.abs(connector.secondY - connector.firstY),
+                left: connector.elbowX,
+                top: Math.min(connector.firstY, connector.secondY),
+              }}
+            />
+            <span
+              className="playoff-connector playoff-connector-horizontal"
+              style={{
+                left: connector.elbowX,
+                top: connector.targetY,
+                width: connector.targetX - connector.elbowX,
+              }}
+            />
+          </div>
+        ))}
+
+        <span
+          className="playoff-connector playoff-connector-horizontal"
+          style={{
+            left: BRACKET_SIDE_PADDING + (roundCount - 1) * (BRACKET_CARD_WIDTH + BRACKET_COLUMN_GAP) + BRACKET_CARD_WIDTH,
+            top: finalCenterY,
+            width: BRACKET_COLUMN_GAP,
+          }}
+        />
+
+        {playoffRounds.map((round) => (
+          round.matches.map((match) => {
+            const playersReady = Boolean(match.player_one_id && match.player_two_id);
+            const playerRows = [
+              { id: match.player_one_id, name: match.player_one_name, seed: match.player_one_seed },
+              { id: match.player_two_id, name: match.player_two_name, seed: match.player_two_seed },
+            ];
+
+            return (
+              <div
+                className="playoff-match-card"
+                key={match.id}
+                style={{
+                  height: BRACKET_CARD_HEIGHT,
+                  left: cardPosition(round.roundIndex, match.match_index).left,
+                  top: cardPosition(round.roundIndex, match.match_index).top,
+                  width: BRACKET_CARD_WIDTH,
+                }}
+              >
+                {playerRows.map((player, playerIndex) => {
+                  const isWinner = player.id && match.winner_player_id === player.id;
+                  const canClick = playersReady && player.id && savingPlayoffMatchId !== match.id;
+
+                  return (
+                    <button
+                      className={`playoff-player-row ${isWinner ? "playoff-player-row-winner" : ""}`}
+                      disabled={!canClick}
+                      key={`${match.id}-${playerIndex}`}
+                      onClick={() => onSetWinner(match, player.id)}
+                      type="button"
+                    >
+                      <span className="playoff-player-name">
+                        {player.seed ? `#${player.seed} ` : ""}
+                        {player.name || "TBD"}
+                      </span>
+                      {isWinner ? <span className="playoff-winner-badge">Winner</span> : null}
+                    </button>
+                  );
+                })}
+              </div>
+            );
+          })
+        ))}
+
+        <div
+          className="playoff-champion-card"
+          style={{
+            left: championLeft,
+            top: finalCenterY - 36,
+            width: BRACKET_CHAMPION_WIDTH,
+          }}
+        >
+          <p className="text-xs font-semibold uppercase text-amber-300">Champion</p>
+          <p className="mt-1 truncate text-sm font-semibold text-slate-50">{championName || "TBD"}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function AdminTournamentPage() {
   const { id } = useParams();
   const [tournament, setTournament] = useState(null);
@@ -47,6 +253,12 @@ export default function AdminTournamentPage() {
   const [matchesError, setMatchesError] = useState("");
   const [standings, setStandings] = useState([]);
   const [standingsSearch, setStandingsSearch] = useState("");
+  const [playoffBracket, setPlayoffBracket] = useState(null);
+  const [isLoadingPlayoffs, setIsLoadingPlayoffs] = useState(true);
+  const [isCreatingPlayoffs, setIsCreatingPlayoffs] = useState(false);
+  const [isDeletingPlayoffs, setIsDeletingPlayoffs] = useState(false);
+  const [savingPlayoffMatchId, setSavingPlayoffMatchId] = useState(null);
+  const [playoffsError, setPlayoffsError] = useState("");
   const [copyMessage, setCopyMessage] = useState("");
   const [importRoundNumber, setImportRoundNumber] = useState("1");
   const [importFile, setImportFile] = useState(null);
@@ -75,6 +287,9 @@ export default function AdminTournamentPage() {
   const [publicPublishingConfig, setPublicPublishingConfig] = useState(null);
   const [publishMessage, setPublishMessage] = useState("");
   const [publishError, setPublishError] = useState("");
+  const [communityStatsMessage, setCommunityStatsMessage] = useState("");
+  const [communityStatsError, setCommunityStatsError] = useState("");
+  const [isUpdatingCommunityStatsInclusion, setIsUpdatingCommunityStatsInclusion] = useState(false);
   const [isEnablingAutoSync, setIsEnablingAutoSync] = useState(false);
   const [isDisablingAutoSync, setIsDisablingAutoSync] = useState(false);
   const [isRunningAutoSync, setIsRunningAutoSync] = useState(false);
@@ -179,6 +394,21 @@ export default function AdminTournamentPage() {
     }
   }
 
+  async function fetchPlayoffs() {
+    try {
+      setPlayoffsError("");
+      const response = await api.get(`/tournaments/${id}/playoffs`);
+      setPlayoffBracket(response.data || null);
+      return response.data || null;
+    } catch {
+      setPlayoffsError("Could not load playoffs.");
+      setPlayoffBracket(null);
+      return null;
+    } finally {
+      setIsLoadingPlayoffs(false);
+    }
+  }
+
   async function fetchAutoSyncStatus() {
     try {
       const response = await api.get("/auto-sync/status");
@@ -207,6 +437,7 @@ export default function AdminTournamentPage() {
       fetchRounds(),
       fetchMatches(),
       fetchStandings(),
+      fetchPlayoffs(),
     ]);
 
     if (!reconcileKtsSyncRound || !nextTournament || nextRounds.length === 0) {
@@ -606,6 +837,27 @@ export default function AdminTournamentPage() {
     }
   }
 
+  async function handleUpdateCommunityStatsInclusion(shouldCount) {
+    try {
+      setIsUpdatingCommunityStatsInclusion(true);
+      setCommunityStatsError("");
+      setCommunityStatsMessage("");
+      const response = await api.patch(`/tournaments/${id}/community-stats`, {
+        counts_toward_community_stats: shouldCount,
+      });
+      setTournament(response.data);
+      setCommunityStatsMessage(
+        shouldCount
+          ? "Tournament now counts toward community statistics."
+          : "Tournament excluded from community statistics.",
+      );
+    } catch (error) {
+      setCommunityStatsError(getApiErrorMessage(error, "Could not update community statistics setting."));
+    } finally {
+      setIsUpdatingCommunityStatsInclusion(false);
+    }
+  }
+
   function updateImportRoundNumber(value) {
     setImportRoundNumber(value);
     setImportPreview(null);
@@ -753,6 +1005,51 @@ export default function AdminTournamentPage() {
       setTournamentFileImportError(getApiErrorMessage(error, "Could not import KTS tournament file."));
     } finally {
       setIsImportingTournamentFile(false);
+    }
+  }
+
+  async function handleCreatePlayoffs(size) {
+    try {
+      setIsCreatingPlayoffs(true);
+      setPlayoffsError("");
+      const response = await api.post(`/tournaments/${id}/playoffs`, { size });
+      setPlayoffBracket(response.data);
+    } catch (error) {
+      setPlayoffsError(getApiErrorMessage(error, "Could not create playoffs."));
+    } finally {
+      setIsCreatingPlayoffs(false);
+    }
+  }
+
+  async function handleDeletePlayoffs() {
+    try {
+      setIsDeletingPlayoffs(true);
+      setPlayoffsError("");
+      await api.delete(`/tournaments/${id}/playoffs`);
+      setPlayoffBracket(null);
+    } catch (error) {
+      setPlayoffsError(getApiErrorMessage(error, "Could not reset playoffs."));
+    } finally {
+      setIsDeletingPlayoffs(false);
+    }
+  }
+
+  async function handleSetPlayoffWinner(match, winnerPlayerId) {
+    if (!match.player_one_id || !match.player_two_id) {
+      return;
+    }
+
+    try {
+      setSavingPlayoffMatchId(match.id);
+      setPlayoffsError("");
+      const response = await api.put(`/tournaments/${id}/playoffs/matches/${match.id}/winner`, {
+        winner_player_id: winnerPlayerId,
+      });
+      setPlayoffBracket(response.data);
+    } catch (error) {
+      setPlayoffsError(getApiErrorMessage(error, "Could not save playoff winner."));
+    } finally {
+      setSavingPlayoffMatchId(null);
     }
   }
 
@@ -954,6 +1251,30 @@ export default function AdminTournamentPage() {
                 <p className="font-semibold text-gray-950">Public link</p>
                 <p className="break-all">{displayPublicUrl || "Publish this tournament first to generate a public link."}</p>
               </div>
+            </div>
+            <div className="mt-4 rounded-md border border-gray-200 bg-gray-50 px-3 py-3">
+              <label className="flex items-start gap-3 text-sm font-medium text-gray-950">
+                <input
+                  checked={tournament?.counts_toward_community_stats !== false}
+                  className="mt-1 h-4 w-4"
+                  disabled={isUpdatingCommunityStatsInclusion || !tournament}
+                  onChange={(event) => handleUpdateCommunityStatsInclusion(event.target.checked)}
+                  type="checkbox"
+                />
+                <span>
+                  Count toward community statistics
+                  <span className="mt-1 block text-sm font-normal text-gray-600">
+                    Turn this off for test, casual, or side events that should not affect player totals.
+                  </span>
+                </span>
+              </label>
+              {tournament?.counts_toward_community_stats === false ? (
+                <Badge className="mt-3 border-amber-300 bg-amber-100 text-amber-900">
+                  Excluded from community stats
+                </Badge>
+              ) : null}
+              {communityStatsMessage ? <p className="mt-2 text-sm font-medium text-green-700">{communityStatsMessage}</p> : null}
+              {communityStatsError ? <p className="mt-2 text-sm font-medium text-red-700">{communityStatsError}</p> : null}
             </div>
             <div className="mt-4 flex flex-wrap gap-2">
               <a
@@ -1239,6 +1560,7 @@ export default function AdminTournamentPage() {
           <Tabs onValueChange={setActiveTournamentTab} value={activeTournamentTab}>
             <TabsList>
               <TabsTrigger value="matches">Current Round / Matches</TabsTrigger>
+              <TabsTrigger value="playoffs">Playoffs</TabsTrigger>
               <TabsTrigger value="standings">Standings</TabsTrigger>
             </TabsList>
           </Tabs>
@@ -1298,6 +1620,65 @@ export default function AdminTournamentPage() {
         ) : null}
         </CardContent>
       </Card>
+      ) : null}
+
+      {activeTournamentTab === "playoffs" ? (
+        <Card className="border-slate-700/70 bg-slate-950/85">
+          <CardHeader className="flex-row items-center justify-between gap-4 space-y-0">
+            <div>
+              <CardTitle>Playoffs</CardTitle>
+              <CardDescription>
+                {playoffBracket ? `Top ${playoffBracket.size} - ${playoffBracket.status}` : "Seeds are generated from the current standings."}
+              </CardDescription>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button onClick={fetchPlayoffs} size="sm" type="button" variant="ghost">
+                Refresh
+              </Button>
+              {playoffBracket ? (
+                <Button disabled={isDeletingPlayoffs} onClick={handleDeletePlayoffs} size="sm" type="button" variant="destructive">
+                  {isDeletingPlayoffs ? "Resetting..." : "Reset"}
+                </Button>
+              ) : null}
+            </div>
+          </CardHeader>
+          <CardContent>
+            {playoffsError ? (
+              <p className="mb-4 rounded-md border border-red-400/30 bg-red-500/10 px-3 py-2 text-sm font-medium text-red-200">
+                {playoffsError}
+              </p>
+            ) : null}
+
+            {isLoadingPlayoffs ? <p className="text-sm text-slate-400">Loading playoffs...</p> : null}
+
+            {!isLoadingPlayoffs && !playoffBracket ? (
+              <div className="rounded-lg border border-slate-700/70 bg-slate-900/55 p-4">
+                <h3 className="text-base font-semibold text-slate-50">Create Top Cut</h3>
+                <p className="mt-1 text-sm text-slate-400">Seeds are generated from the current standings.</p>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {[4, 8, 16].map((size) => (
+                    <Button
+                      disabled={isCreatingPlayoffs}
+                      key={size}
+                      onClick={() => handleCreatePlayoffs(size)}
+                      type="button"
+                    >
+                      {isCreatingPlayoffs ? "Creating..." : `Top ${size}`}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            {playoffBracket ? (
+              <PlayoffBracketView
+                onSetWinner={handleSetPlayoffWinner}
+                playoffBracket={playoffBracket}
+                savingPlayoffMatchId={savingPlayoffMatchId}
+              />
+            ) : null}
+          </CardContent>
+        </Card>
       ) : null}
 
       {activeTournamentTab === "matches" ? (
