@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 
 import { Badge } from "./ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
@@ -87,6 +88,10 @@ function getMatchStatusBadge(match) {
   }
 
   return { label: "Pending", className: "bg-yellow-100 text-yellow-800" };
+}
+
+function getPublicView(value) {
+  return ["pairings", "standings", "playoffs"].includes(value) ? value : "pairings";
 }
 
 const PUBLIC_BRACKET_CARD_WIDTH = 256;
@@ -237,7 +242,9 @@ export default function PublicTournamentView({
   error,
   fallbackTitle,
 }) {
-  const [activeTab, setActiveTab] = useState("pairings");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedView = getPublicView(searchParams.get("view"));
+  const [activeTab, setActiveTab] = useState(requestedView);
   const [playerSearch, setPlayerSearch] = useState("");
   const [standingsSearch, setStandingsSearch] = useState("");
 
@@ -288,11 +295,39 @@ export default function PublicTournamentView({
     ? new Date(tournamentData.lastUpdatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
     : "-";
 
-  useEffect(() => {
-    if (activeTab === "playoffs" && !playoffBracket) {
-      setActiveTab("pairings");
+  function updatePublicView(view, { replace = false } = {}) {
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.set("view", view);
+    setSearchParams(nextParams, { replace });
+  }
+
+  function handlePublicTabChange(view) {
+    if (view === "playoffs" && !playoffBracket) {
+      return;
     }
-  }, [activeTab, playoffBracket]);
+
+    setActiveTab(view);
+    updatePublicView(view);
+  }
+
+  useEffect(() => {
+    if (requestedView === "playoffs" && !playoffBracket) {
+      if (!isLoading && tournamentData) {
+        setActiveTab("pairings");
+        updatePublicView("pairings", { replace: true });
+      }
+      return;
+    }
+
+    setActiveTab(requestedView);
+  }, [requestedView, playoffBracket, isLoading, tournamentData]);
+
+  useEffect(() => {
+    if (activeTab === "playoffs" && !playoffBracket && !isLoading && tournamentData) {
+      setActiveTab("pairings");
+      updatePublicView("pairings", { replace: true });
+    }
+  }, [activeTab, playoffBracket, isLoading, tournamentData]);
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-5xl flex-col gap-5 px-4 py-5 sm:py-8">
@@ -329,7 +364,7 @@ export default function PublicTournamentView({
 
       <Card className="border-slate-700/70 bg-slate-950/85">
         <CardContent className="p-5">
-          <Tabs onValueChange={setActiveTab} value={activeTab}>
+          <Tabs onValueChange={handlePublicTabChange} value={activeTab}>
             <TabsList>
               <TabsTrigger value="pairings">Pairings</TabsTrigger>
               {playoffBracket ? <TabsTrigger value="playoffs">Playoffs</TabsTrigger> : null}

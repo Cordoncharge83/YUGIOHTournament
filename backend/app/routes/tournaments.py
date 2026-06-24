@@ -1,4 +1,5 @@
 import csv
+import logging
 from io import StringIO
 from xml.etree.ElementTree import Element, ParseError
 
@@ -40,6 +41,7 @@ from app.schemas import (
 )
 
 router = APIRouter(prefix="/tournaments", tags=["tournaments"])
+logger = logging.getLogger(__name__)
 KTS_BYE_VALUE = "***BYE***"
 KTS_ZERO_BYE_VALUE = "0"
 BYE_NOTE = "BYE"
@@ -259,6 +261,20 @@ def recompute_playoff_advancement(bracket: PlayoffBracket) -> None:
 
     final_match = matches_by_round[round_indexes[-1]][0]
     bracket.status = "completed" if final_match.winner_profile_id is not None else "active"
+
+
+def auto_publish_tournament_if_published(db: Session, tournament_id: int) -> None:
+    tournament = db.get(Tournament, tournament_id)
+    if tournament is None or tournament.publish_status != "published" or not tournament.public_id:
+        return
+
+    try:
+        snapshot = build_publish_payload(db, tournament)
+        publish_snapshot(tournament.public_id, snapshot)
+        publish_tournament(db, tournament)
+    except (PublicPublishingConfigurationError, PublicPublishingRemoteError) as exc:
+        db.rollback()
+        logger.warning("Playoff change saved, but hosted public snapshot refresh failed for tournament %s: %s", tournament_id, exc)
 
 
 def clear_downstream_playoff_winners(bracket: PlayoffBracket, changed_match: PlayoffMatch) -> None:
@@ -797,7 +813,9 @@ def create_playoffs(
 
     db.commit()
     db.refresh(bracket)
-    return playoff_bracket_read(bracket)
+    bracket_read = playoff_bracket_read(bracket)
+    auto_publish_tournament_if_published(db, tournament_id)
+    return bracket_read
 
 
 @router.put("/{tournament_id}/playoffs/matches/{match_id}/winner", response_model=PlayoffBracketRead)
@@ -833,7 +851,9 @@ def update_playoff_winner(
     recompute_playoff_advancement(bracket)
     db.commit()
     db.refresh(bracket)
-    return playoff_bracket_read(bracket)
+    bracket_read = playoff_bracket_read(bracket)
+    auto_publish_tournament_if_published(db, tournament_id)
+    return bracket_read
 
 
 @router.delete("/{tournament_id}/playoffs")
@@ -846,6 +866,7 @@ def delete_playoffs(tournament_id: int, db: Session = Depends(get_db)) -> dict[s
     if bracket is not None:
         db.delete(bracket)
         db.commit()
+        auto_publish_tournament_if_published(db, tournament_id)
 
     return {"deleted": True}
 

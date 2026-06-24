@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import patch
 
 from fastapi import HTTPException
 from sqlalchemy import create_engine
@@ -7,6 +8,7 @@ from sqlalchemy.orm import sessionmaker
 from app.database import Base
 from app.models import PlayerProfile, Standing, Tournament
 from app.publishing import build_publish_payload
+from app.public_publishing_client import PublicPublishingRemoteError
 from app.routes.tournaments import (
     create_playoffs,
     delete_playoffs,
@@ -274,6 +276,72 @@ class PlayoffTests(unittest.TestCase):
                         assert_public_safe(item)
 
             assert_public_safe(playoff_bracket)
+        finally:
+            db.close()
+
+    def test_published_tournament_playoff_changes_refresh_public_snapshot(self):
+        db = self.SessionLocal()
+        try:
+            tournament, profiles = self.seed_tournament(db, 8)
+            tournament.publish_status = "published"
+            tournament.public_id = "top-cut-test"
+            db.commit()
+
+            with (
+                patch("app.routes.tournaments.publish_snapshot") as publish_snapshot_mock,
+                patch("app.routes.tournaments.publish_tournament") as publish_tournament_mock,
+            ):
+                bracket = create_playoffs(tournament.id, PlayoffCreate(size=8), db)
+                publish_snapshot_mock.assert_called_once()
+                self.assertEqual(publish_snapshot_mock.call_args.args[0], "top-cut-test")
+                self.assertIn("playoff_bracket", publish_snapshot_mock.call_args.args[1])
+                publish_tournament_mock.assert_called_once()
+
+            quarterfinal = [match for match in bracket.matches if match.round_index == 0][0]
+            with (
+                patch("app.routes.tournaments.publish_snapshot") as publish_snapshot_mock,
+                patch("app.routes.tournaments.publish_tournament") as publish_tournament_mock,
+            ):
+                update_playoff_winner(
+                    tournament.id,
+                    quarterfinal.id,
+                    PlayoffWinnerUpdate(winner_player_id=profiles[0].id),
+                    db,
+                )
+                publish_snapshot_mock.assert_called_once()
+                self.assertTrue(
+                    publish_snapshot_mock.call_args.args[1]["playoff_bracket"]["rounds"][0]["matches"][0]["players"][0]["winner"]
+                )
+                publish_tournament_mock.assert_called_once()
+
+            with (
+                patch("app.routes.tournaments.publish_snapshot") as publish_snapshot_mock,
+                patch("app.routes.tournaments.publish_tournament") as publish_tournament_mock,
+            ):
+                delete_playoffs(tournament.id, db)
+                publish_snapshot_mock.assert_called_once()
+                self.assertIsNone(publish_snapshot_mock.call_args.args[1]["playoff_bracket"])
+                publish_tournament_mock.assert_called_once()
+        finally:
+            db.close()
+
+    def test_playoff_auto_publish_failure_does_not_undo_local_change(self):
+        db = self.SessionLocal()
+        try:
+            tournament, _profiles = self.seed_tournament(db, 4)
+            tournament.publish_status = "published"
+            tournament.public_id = "top-cut-test"
+            db.commit()
+
+            with patch(
+                "app.routes.tournaments.publish_snapshot",
+                side_effect=PublicPublishingRemoteError("Worker unavailable"),
+            ):
+                bracket = create_playoffs(tournament.id, PlayoffCreate(size=4), db)
+
+            preserved_bracket = get_tournament_playoff_bracket(db, tournament.id)
+            self.assertIsNotNone(preserved_bracket)
+            self.assertEqual(preserved_bracket.id, bracket.id)
         finally:
             db.close()
 
