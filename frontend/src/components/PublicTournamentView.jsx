@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { Badge } from "./ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
@@ -89,6 +89,148 @@ function getMatchStatusBadge(match) {
   return { label: "Pending", className: "bg-yellow-100 text-yellow-800" };
 }
 
+const PUBLIC_BRACKET_CARD_WIDTH = 256;
+const PUBLIC_BRACKET_CARD_HEIGHT = 98;
+const PUBLIC_BRACKET_COLUMN_GAP = 96;
+const PUBLIC_BRACKET_ROW_GAP = 28;
+const PUBLIC_BRACKET_ROW_PITCH = PUBLIC_BRACKET_CARD_HEIGHT + PUBLIC_BRACKET_ROW_GAP;
+const PUBLIC_BRACKET_HEADER_HEIGHT = 34;
+const PUBLIC_BRACKET_SIDE_PADDING = 8;
+const PUBLIC_BRACKET_CHAMPION_WIDTH = 220;
+
+function PublicPlayoffBracketView({ playoffBracket }) {
+  const playoffRounds = [...(playoffBracket?.rounds || [])].sort((firstRound, secondRound) => firstRound.round_index - secondRound.round_index);
+  const firstRoundMatchCount = playoffRounds[0]?.matches.length || 0;
+  const roundCount = playoffRounds.length;
+  const boardHeight = PUBLIC_BRACKET_HEADER_HEIGHT + Math.max(firstRoundMatchCount, 1) * PUBLIC_BRACKET_ROW_PITCH - PUBLIC_BRACKET_ROW_GAP;
+  const boardWidth = (
+    roundCount * PUBLIC_BRACKET_CARD_WIDTH
+    + Math.max(roundCount - 1, 0) * PUBLIC_BRACKET_COLUMN_GAP
+    + PUBLIC_BRACKET_CHAMPION_WIDTH
+    + PUBLIC_BRACKET_COLUMN_GAP
+    + PUBLIC_BRACKET_SIDE_PADDING * 2
+  );
+
+  const cardPosition = (roundIndex, matchIndex) => {
+    const left = PUBLIC_BRACKET_SIDE_PADDING + roundIndex * (PUBLIC_BRACKET_CARD_WIDTH + PUBLIC_BRACKET_COLUMN_GAP);
+    const blockSize = 2 ** roundIndex;
+    const sourceCenterIndex = matchIndex * blockSize + (blockSize - 1) / 2;
+    return {
+      left,
+      top: PUBLIC_BRACKET_HEADER_HEIGHT + sourceCenterIndex * PUBLIC_BRACKET_ROW_PITCH,
+    };
+  };
+
+  const cardCenterY = (roundIndex, matchIndex) => cardPosition(roundIndex, matchIndex).top + PUBLIC_BRACKET_CARD_HEIGHT / 2;
+  const connectors = playoffRounds.slice(1).flatMap((round) => (
+    [...round.matches]
+      .sort((firstMatch, secondMatch) => firstMatch.match_index - secondMatch.match_index)
+      .map((match) => {
+        const sourceRoundIndex = round.round_index - 1;
+        const firstSourceIndex = match.match_index * 2;
+        const secondSourceIndex = firstSourceIndex + 1;
+        const sourceX = PUBLIC_BRACKET_SIDE_PADDING + sourceRoundIndex * (PUBLIC_BRACKET_CARD_WIDTH + PUBLIC_BRACKET_COLUMN_GAP) + PUBLIC_BRACKET_CARD_WIDTH;
+        const targetX = cardPosition(round.round_index, match.match_index).left;
+        const elbowX = sourceX + (targetX - sourceX) / 2;
+        const firstY = cardCenterY(sourceRoundIndex, firstSourceIndex);
+        const secondY = cardCenterY(sourceRoundIndex, secondSourceIndex);
+        const targetY = cardCenterY(round.round_index, match.match_index);
+
+        return {
+          key: `${round.round_index}-${match.match_index}`,
+          sourceX,
+          elbowX,
+          targetX,
+          firstY,
+          secondY,
+          targetY,
+        };
+      })
+  ));
+  const finalCenterY = roundCount > 0 ? cardCenterY(roundCount - 1, 0) : PUBLIC_BRACKET_HEADER_HEIGHT;
+  const championLeft = PUBLIC_BRACKET_SIDE_PADDING + roundCount * (PUBLIC_BRACKET_CARD_WIDTH + PUBLIC_BRACKET_COLUMN_GAP);
+
+  return (
+    <div className="overflow-x-auto">
+      <div className="playoff-bracket-board" style={{ height: boardHeight, width: boardWidth }}>
+        {playoffRounds.map((round) => (
+          <h3
+            className="playoff-round-heading"
+            key={`public-heading-${round.round_index}`}
+            style={{ left: cardPosition(round.round_index, 0).left, width: PUBLIC_BRACKET_CARD_WIDTH }}
+          >
+            {round.name}
+          </h3>
+        ))}
+
+        {connectors.map((connector) => (
+          <div className="playoff-connector-group" key={connector.key}>
+            <span className="playoff-connector playoff-connector-horizontal" style={{ left: connector.sourceX, top: connector.firstY, width: connector.elbowX - connector.sourceX }} />
+            <span className="playoff-connector playoff-connector-horizontal" style={{ left: connector.sourceX, top: connector.secondY, width: connector.elbowX - connector.sourceX }} />
+            <span className="playoff-connector playoff-connector-vertical" style={{ height: Math.abs(connector.secondY - connector.firstY), left: connector.elbowX, top: Math.min(connector.firstY, connector.secondY) }} />
+            <span className="playoff-connector playoff-connector-horizontal" style={{ left: connector.elbowX, top: connector.targetY, width: connector.targetX - connector.elbowX }} />
+          </div>
+        ))}
+
+        {roundCount > 0 ? (
+          <span
+            className="playoff-connector playoff-connector-horizontal"
+            style={{
+              left: PUBLIC_BRACKET_SIDE_PADDING + (roundCount - 1) * (PUBLIC_BRACKET_CARD_WIDTH + PUBLIC_BRACKET_COLUMN_GAP) + PUBLIC_BRACKET_CARD_WIDTH,
+              top: finalCenterY,
+              width: PUBLIC_BRACKET_COLUMN_GAP,
+            }}
+          />
+        ) : null}
+
+        {playoffRounds.map((round) => (
+          [...round.matches]
+            .sort((firstMatch, secondMatch) => firstMatch.match_index - secondMatch.match_index)
+            .map((match) => (
+              <div
+                className="playoff-match-card"
+                key={`public-match-${round.round_index}-${match.match_index}`}
+                style={{
+                  height: PUBLIC_BRACKET_CARD_HEIGHT,
+                  left: cardPosition(round.round_index, match.match_index).left,
+                  top: cardPosition(round.round_index, match.match_index).top,
+                  width: PUBLIC_BRACKET_CARD_WIDTH,
+                }}
+              >
+                {(match.players || []).map((player, playerIndex) => (
+                  <div
+                    className={`playoff-player-row playoff-player-row-readonly ${player.winner ? "playoff-player-row-winner" : ""}`}
+                    key={`public-player-${round.round_index}-${match.match_index}-${playerIndex}`}
+                  >
+                    <span className="playoff-player-name">
+                      {player.seed ? `#${player.seed} ` : ""}
+                      {formatPlayerDisplayName(player.name) || "TBD"}
+                    </span>
+                    {player.winner ? <span className="playoff-winner-badge">Winner</span> : null}
+                  </div>
+                ))}
+              </div>
+            ))
+        ))}
+
+        <div
+          className="playoff-champion-card"
+          style={{
+            left: championLeft,
+            top: finalCenterY - 36,
+            width: PUBLIC_BRACKET_CHAMPION_WIDTH,
+          }}
+        >
+          <p className="text-xs font-semibold uppercase text-amber-300">Champion</p>
+          <p className="mt-1 truncate text-sm font-semibold text-slate-50">
+            {formatPlayerDisplayName(playoffBracket.champion_name) || "TBD"}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function PublicTournamentView({
   tournamentData,
   isLoading,
@@ -103,6 +245,7 @@ export default function PublicTournamentView({
   const rounds = tournamentData?.rounds || [];
   const matches = tournamentData?.matches || [];
   const standings = tournamentData?.standings || [];
+  const playoffBracket = tournamentData?.playoff_bracket || null;
   const normalizedPlayerSearch = playerSearch.trim().toLowerCase();
   const normalizedStandingsSearch = standingsSearch.trim().toLowerCase();
   const currentRound = rounds.find((round) => round.id === tournament?.current_round_id) || null;
@@ -145,6 +288,12 @@ export default function PublicTournamentView({
     ? new Date(tournamentData.lastUpdatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
     : "-";
 
+  useEffect(() => {
+    if (activeTab === "playoffs" && !playoffBracket) {
+      setActiveTab("pairings");
+    }
+  }, [activeTab, playoffBracket]);
+
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-5xl flex-col gap-5 px-4 py-5 sm:py-8">
       <Card className="border-slate-700/70 bg-slate-950/85">
@@ -183,6 +332,7 @@ export default function PublicTournamentView({
           <Tabs onValueChange={setActiveTab} value={activeTab}>
             <TabsList>
               <TabsTrigger value="pairings">Pairings</TabsTrigger>
+              {playoffBracket ? <TabsTrigger value="playoffs">Playoffs</TabsTrigger> : null}
               <TabsTrigger value="standings">Standings</TabsTrigger>
             </TabsList>
           </Tabs>
@@ -340,6 +490,19 @@ export default function PublicTournamentView({
                 </div>
               )}
             </>
+          ) : null}
+
+          {activeTab === "playoffs" && playoffBracket ? (
+            <section className="mt-4 rounded-lg border border-slate-700 bg-slate-900/55 p-4">
+              <div className="mb-4 flex flex-wrap items-center gap-2">
+                <h3 className="mr-2 text-xl font-semibold text-slate-50">Top Cut</h3>
+                <Badge className="border-slate-600 bg-slate-800 text-slate-200">Top {playoffBracket.size}</Badge>
+                <Badge className={playoffBracket.status === "completed" ? "bg-green-100 text-green-800" : "bg-yellow-100 text-yellow-800"}>
+                  {playoffBracket.status === "completed" ? "Completed" : "Active"}
+                </Badge>
+              </div>
+              <PublicPlayoffBracketView playoffBracket={playoffBracket} />
+            </section>
           ) : null}
         </CardContent>
       </Card>

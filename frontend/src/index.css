@@ -328,11 +328,25 @@ div:has(> svg) svg {
   opacity: 0.82;
 }
 
+.playoff-player-row-readonly {
+  cursor: default;
+}
+
+.playoff-player-row-readonly:hover {
+  background-color: rgba(15, 23, 42, 0.76);
+  border-color: rgba(51, 65, 85, 0.74);
+}
+
 .playoff-player-row-winner {
   color: #d1fae5;
   background-color: rgba(16, 185, 129, 0.16);
   border-color: rgba(52, 211, 153, 0.48);
   box-shadow: inset 3px 0 0 rgba(52, 211, 153, 0.72);
+}
+
+.playoff-player-row-readonly.playoff-player-row-winner:hover {
+  background-color: rgba(16, 185, 129, 0.16);
+  border-color: rgba(52, 211, 153, 0.48);
 }
 
 .playoff-player-name {

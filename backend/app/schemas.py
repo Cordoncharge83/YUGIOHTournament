@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from datetime import datetime
 from typing import Literal
 
@@ -305,6 +307,7 @@ class PublicTournamentRead(BaseModel):
     rounds: list[RoundRead]
     matches: list[PublicMatchRead]
     standings: list[PublicStandingRead]
+    playoff_bracket: PublicSnapshotPlayoffBracketRead | None = None
 
 
 class PublicSnapshotPairingRead(BaseModel):
@@ -320,6 +323,31 @@ class PublicSnapshotStandingRead(BaseModel):
     player_name: str
     points: int
     tiebreaker: str | None
+
+
+class PublicSnapshotPlayoffPlayerRead(BaseModel):
+    seed: int | None
+    name: str | None
+    winner: bool = False
+
+
+class PublicSnapshotPlayoffMatchRead(BaseModel):
+    match_index: int
+    players: list[PublicSnapshotPlayoffPlayerRead]
+    winner_name: str | None
+
+
+class PublicSnapshotPlayoffRoundRead(BaseModel):
+    round_index: int
+    name: str
+    matches: list[PublicSnapshotPlayoffMatchRead]
+
+
+class PublicSnapshotPlayoffBracketRead(BaseModel):
+    size: int
+    status: PlayoffBracketStatus
+    champion_name: str | None
+    rounds: list[PublicSnapshotPlayoffRoundRead]
 
 
 class PublicSnapshotMetadataRead(BaseModel):
@@ -338,4 +366,5 @@ class PublicTournamentSnapshotRead(BaseModel):
     public_display_status: str | None
     current_round_pairings: list[PublicSnapshotPairingRead]
     standings: list[PublicSnapshotStandingRead]
+    playoff_bracket: PublicSnapshotPlayoffBracketRead | None = None
     metadata: PublicSnapshotMetadataRead

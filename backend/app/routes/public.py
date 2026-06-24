@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import Match, Player, Round, Standing, Tournament
+from app.public_snapshots import build_public_playoff_bracket
 from app.schemas import PublicMatchRead, PublicTournamentRead
 
 router = APIRouter(prefix="/public", tags=["public"])
@@ -67,4 +68,5 @@ def get_public_tournament(tournament_id: int, db: Session = Depends(get_db)) -> 
         rounds=rounds,
         matches=public_matches,
         standings=standings,
+        playoff_bracket=build_public_playoff_bracket(db, tournament_id),
     )

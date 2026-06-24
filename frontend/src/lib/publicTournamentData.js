@@ -24,6 +24,14 @@ export function adaptSnapshotToPublicTournamentData(workerData, publicId) {
     addPlayerName(uniquePlayerNames, standing.player_name);
   }
 
+  for (const round of snapshot.playoff_bracket?.rounds || []) {
+    for (const match of round.matches || []) {
+      for (const player of match.players || []) {
+        addPlayerName(uniquePlayerNames, player.name);
+      }
+    }
+  }
+
   const players = [...uniquePlayerNames].map((name, index) => ({
     id: `player-${index + 1}`,
     name,
@@ -70,6 +78,7 @@ export function adaptSnapshotToPublicTournamentData(workerData, publicId) {
       points: standing.points,
       tiebreaker: standing.tiebreaker,
     })),
+    playoff_bracket: snapshot.playoff_bracket || null,
     lastUpdatedAt: snapshot.last_updated_at || workerData.updatedAt || null,
   };
 }

@@ -6,6 +6,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.database import Base
 from app.models import PlayerProfile, Standing, Tournament
+from app.publishing import build_publish_payload
 from app.routes.tournaments import (
     create_playoffs,
     delete_playoffs,
@@ -235,6 +236,44 @@ class PlayoffTests(unittest.TestCase):
             preserved_bracket = get_tournament_playoff_bracket(db, tournament.id)
             self.assertIsNotNone(preserved_bracket)
             self.assertEqual(preserved_bracket.id, bracket.id)
+        finally:
+            db.close()
+
+    def test_publish_payload_includes_public_safe_playoff_bracket(self):
+        db = self.SessionLocal()
+        try:
+            tournament, profiles = self.seed_tournament(db, 8)
+            bracket = create_playoffs(tournament.id, PlayoffCreate(size=8), db)
+            quarterfinals = [match for match in bracket.matches if match.round_index == 0]
+            bracket = update_playoff_winner(
+                tournament.id,
+                quarterfinals[0].id,
+                PlayoffWinnerUpdate(winner_player_id=profiles[0].id),
+                db,
+            )
+
+            payload = build_publish_payload(db, tournament)
+            playoff_bracket = payload["playoff_bracket"]
+
+            self.assertEqual(playoff_bracket["size"], 8)
+            self.assertEqual(playoff_bracket["rounds"][0]["name"], "Quarterfinals")
+            self.assertEqual(playoff_bracket["rounds"][0]["matches"][0]["players"][0]["seed"], 1)
+            self.assertEqual(playoff_bracket["rounds"][0]["matches"][0]["players"][0]["name"], "Player 1")
+            self.assertTrue(playoff_bracket["rounds"][0]["matches"][0]["players"][0]["winner"])
+
+            def assert_public_safe(value):
+                if isinstance(value, dict):
+                    for key, nested_value in value.items():
+                        self.assertNotIn("cossy", key)
+                        self.assertNotEqual(key, "id")
+                        self.assertFalse(key.endswith("_id"), key)
+                        self.assertNotIn("file_path", key)
+                        assert_public_safe(nested_value)
+                elif isinstance(value, list):
+                    for item in value:
+                        assert_public_safe(item)
+
+            assert_public_safe(playoff_bracket)
         finally:
             db.close()
 
