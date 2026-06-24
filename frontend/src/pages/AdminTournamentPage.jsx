@@ -289,9 +289,6 @@ export default function AdminTournamentPage() {
   const [publicPublishingConfig, setPublicPublishingConfig] = useState(null);
   const [publishMessage, setPublishMessage] = useState("");
   const [publishError, setPublishError] = useState("");
-  const [communityStatsMessage, setCommunityStatsMessage] = useState("");
-  const [communityStatsError, setCommunityStatsError] = useState("");
-  const [isUpdatingCommunityStatsInclusion, setIsUpdatingCommunityStatsInclusion] = useState(false);
   const [isEnablingAutoSync, setIsEnablingAutoSync] = useState(false);
   const [isDisablingAutoSync, setIsDisablingAutoSync] = useState(false);
   const [isRunningAutoSync, setIsRunningAutoSync] = useState(false);
@@ -839,27 +836,6 @@ export default function AdminTournamentPage() {
     }
   }
 
-  async function handleUpdateCommunityStatsInclusion(shouldCount) {
-    try {
-      setIsUpdatingCommunityStatsInclusion(true);
-      setCommunityStatsError("");
-      setCommunityStatsMessage("");
-      const response = await api.patch(`/tournaments/${id}/community-stats`, {
-        counts_toward_community_stats: shouldCount,
-      });
-      setTournament(response.data);
-      setCommunityStatsMessage(
-        shouldCount
-          ? "Tournament now counts toward community statistics."
-          : "Tournament excluded from community statistics.",
-      );
-    } catch (error) {
-      setCommunityStatsError(getApiErrorMessage(error, "Could not update community statistics setting."));
-    } finally {
-      setIsUpdatingCommunityStatsInclusion(false);
-    }
-  }
-
   function updateImportRoundNumber(value) {
     setImportRoundNumber(value);
     setImportPreview(null);
@@ -1253,30 +1229,6 @@ export default function AdminTournamentPage() {
                 <p className="font-semibold text-gray-950">Public link</p>
                 <p className="break-all">{displayPublicUrl || "Publish this tournament first to generate a public link."}</p>
               </div>
-            </div>
-            <div className="mt-4 rounded-md border border-gray-200 bg-gray-50 px-3 py-3">
-              <label className="flex items-start gap-3 text-sm font-medium text-gray-950">
-                <input
-                  checked={tournament?.counts_toward_community_stats !== false}
-                  className="mt-1 h-4 w-4"
-                  disabled={isUpdatingCommunityStatsInclusion || !tournament}
-                  onChange={(event) => handleUpdateCommunityStatsInclusion(event.target.checked)}
-                  type="checkbox"
-                />
-                <span>
-                  Count toward community statistics
-                  <span className="mt-1 block text-sm font-normal text-gray-600">
-                    Turn this off for test, casual, or side events that should not affect player totals.
-                  </span>
-                </span>
-              </label>
-              {tournament?.counts_toward_community_stats === false ? (
-                <Badge className="mt-3 border-amber-300 bg-amber-100 text-amber-900">
-                  Excluded from community stats
-                </Badge>
-              ) : null}
-              {communityStatsMessage ? <p className="mt-2 text-sm font-medium text-green-700">{communityStatsMessage}</p> : null}
-              {communityStatsError ? <p className="mt-2 text-sm font-medium text-red-700">{communityStatsError}</p> : null}
             </div>
             <div className="mt-4 flex flex-wrap gap-2">
               <a

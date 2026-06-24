@@ -23,6 +23,7 @@ export default function AdminPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
   const [deletingTournamentId, setDeletingTournamentId] = useState(null);
+  const [updatingStatsTournamentId, setUpdatingStatsTournamentId] = useState(null);
   const [error, setError] = useState("");
   const [shareTournament, setShareTournament] = useState(null);
   const [copyMessage, setCopyMessage] = useState("");
@@ -97,6 +98,30 @@ export default function AdminPage() {
       setError(getApiErrorMessage(error, "Could not delete tournament."));
     } finally {
       setDeletingTournamentId(null);
+    }
+  }
+
+  async function handleToggleCommunityStats(tournament) {
+    const shouldCount = tournament.counts_toward_community_stats === false;
+
+    try {
+      setUpdatingStatsTournamentId(tournament.id);
+      setError("");
+      const response = await api.patch(`/tournaments/${tournament.id}/community-stats`, {
+        counts_toward_community_stats: shouldCount,
+      });
+      setTournaments((currentTournaments) => (
+        currentTournaments.map((currentTournament) => (
+          currentTournament.id === tournament.id ? response.data : currentTournament
+        ))
+      ));
+      setShareTournament((currentShareTournament) => (
+        currentShareTournament?.id === tournament.id ? response.data : currentShareTournament
+      ));
+    } catch (error) {
+      setError(getApiErrorMessage(error, "Could not update community statistics setting."));
+    } finally {
+      setUpdatingStatsTournamentId(null);
     }
   }
 
@@ -197,6 +222,20 @@ export default function AdminPage() {
                     <div className="flex flex-wrap gap-2">
                       <Button asChild size="sm">
                         <Link to={`/admin/tournaments/${tournament.id}`}>Open</Link>
+                      </Button>
+                      <Button
+                        className={tournament.counts_toward_community_stats === false ? "border-amber-400/45 text-amber-100 hover:bg-amber-400/10" : ""}
+                        disabled={updatingStatsTournamentId === tournament.id}
+                        onClick={() => handleToggleCommunityStats(tournament)}
+                        size="sm"
+                        type="button"
+                        variant="outline"
+                      >
+                        {updatingStatsTournamentId === tournament.id
+                          ? "Saving..."
+                          : tournament.counts_toward_community_stats === false
+                            ? "Stats excluded"
+                            : "Stats included"}
                       </Button>
                       <Button
                         onClick={() => {
