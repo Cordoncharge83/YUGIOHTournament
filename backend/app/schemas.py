@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 MatchResultStatus = Literal["PLAYER_ONE_WIN", "PLAYER_TWO_WIN", "DRAW", "DOUBLE_LOSS", "UNREPORTED"]
 PublishStatus = Literal["draft", "published", "unpublished"]
@@ -215,7 +215,14 @@ class StandingRead(BaseModel):
 
 
 class PlayoffCreate(BaseModel):
-    size: Literal[4, 8, 16]
+    size: int
+
+    @field_validator("size")
+    @classmethod
+    def validate_size(cls, value: int) -> int:
+        if value not in {4, 8, 16, 32, 64} or value & (value - 1) != 0:
+            raise ValueError("Playoff size must be one of: 4, 8, 16, 32, 64.")
+        return value
 
 
 class PlayoffWinnerUpdate(BaseModel):

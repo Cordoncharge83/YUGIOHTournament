@@ -46,11 +46,29 @@ KTS_BYE_VALUE = "***BYE***"
 KTS_ZERO_BYE_VALUE = "0"
 BYE_NOTE = "BYE"
 BYE_VALUES = {KTS_BYE_VALUE.casefold(), KTS_ZERO_BYE_VALUE, BYE_NOTE.casefold()}
-PLAYOFF_SEED_PAIRINGS = {
-    4: [(1, 4), (2, 3)],
-    8: [(1, 8), (4, 5), (3, 6), (2, 7)],
-    16: [(1, 16), (8, 9), (5, 12), (4, 13), (3, 14), (6, 11), (7, 10), (2, 15)],
-}
+ALLOWED_PLAYOFF_SIZES = {4, 8, 16, 32, 64}
+
+
+def validate_playoff_size(size: int) -> None:
+    if size not in ALLOWED_PLAYOFF_SIZES or size & (size - 1) != 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Playoff size must be one of: 4, 8, 16, 32, 64.",
+        )
+
+
+def protected_playoff_seed_order(size: int) -> list[int]:
+    seed_order = [1, 2]
+    while len(seed_order) < size:
+        next_size = len(seed_order) * 2
+        seed_order = [seed for existing_seed in seed_order for seed in (existing_seed, next_size + 1 - existing_seed)]
+
+    return seed_order
+
+
+def protected_playoff_seed_pairings(size: int) -> list[tuple[int, int]]:
+    seed_order = protected_playoff_seed_order(size)
+    return list(zip(seed_order[::2], seed_order[1::2], strict=True))
 
 
 def is_bye(value: str | None) -> bool:
@@ -749,6 +767,8 @@ def create_playoffs(
     playoff_data: PlayoffCreate,
     db: Session = Depends(get_db),
 ) -> PlayoffBracketRead:
+    validate_playoff_size(playoff_data.size)
+
     tournament = db.get(Tournament, tournament_id)
     if tournament is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tournament not found")
@@ -786,7 +806,7 @@ def create_playoffs(
     db.add(bracket)
     db.flush()
 
-    for match_index, (player_one_seed, player_two_seed) in enumerate(PLAYOFF_SEED_PAIRINGS[playoff_data.size]):
+    for match_index, (player_one_seed, player_two_seed) in enumerate(protected_playoff_seed_pairings(playoff_data.size)):
         player_one = seeded_players[player_one_seed]
         player_two = seeded_players[player_two_seed]
         db.add(

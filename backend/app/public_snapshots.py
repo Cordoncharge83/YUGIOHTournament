@@ -20,6 +20,10 @@ BYE_NOTE = "BYE"
 
 def public_playoff_round_name(bracket_size: int, round_index: int) -> str:
     match_count = bracket_size // (2 ** (round_index + 1))
+    if match_count == 32:
+        return "Round of 64"
+    if match_count == 16:
+        return "Round of 32"
     if match_count == 8:
         return "Round of 16"
     if match_count == 4:

@@ -37,6 +37,8 @@ const BRACKET_CHAMPION_WIDTH = 220;
 
 function getPlayoffRoundName(bracketSize, roundIndex) {
   const matchCount = bracketSize / (2 ** (roundIndex + 1));
+  if (matchCount === 32) return "Round of 64";
+  if (matchCount === 16) return "Round of 32";
   if (matchCount === 8) return "Round of 16";
   if (matchCount === 4) return "Quarterfinals";
   if (matchCount === 2) return "Semifinals";
@@ -1656,7 +1658,7 @@ export default function AdminTournamentPage() {
                 <h3 className="text-base font-semibold text-slate-50">Create Top Cut</h3>
                 <p className="mt-1 text-sm text-slate-400">Seeds are generated from the current standings.</p>
                 <div className="mt-4 flex flex-wrap gap-2">
-                  {[4, 8, 16].map((size) => (
+                  {[4, 8, 16, 32, 64].map((size) => (
                     <Button
                       disabled={isCreatingPlayoffs}
                       key={size}

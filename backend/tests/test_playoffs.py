@@ -14,6 +14,7 @@ from app.routes.tournaments import (
     delete_playoffs,
     get_tournament_playoff_bracket,
     import_parsed_tournament_file,
+    protected_playoff_seed_order,
     update_playoff_winner,
 )
 from app.schemas import PlayoffCreate, PlayoffWinnerUpdate
@@ -25,7 +26,7 @@ class PlayoffTests(unittest.TestCase):
         Base.metadata.create_all(bind=engine)
         self.SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-    def seed_tournament(self, db, player_count=16):
+    def seed_tournament(self, db, player_count=16, cossy_prefix=""):
         tournament = Tournament(name="Top Cut Test")
         db.add(tournament)
         db.flush()
@@ -35,7 +36,7 @@ class PlayoffTests(unittest.TestCase):
             profile = PlayerProfile(
                 display_name=f"Player {rank}",
                 normalized_name=f"player {rank}",
-                cossy_id=str(rank),
+                cossy_id=f"{cossy_prefix}{rank}",
             )
             db.add(profile)
             db.flush()
@@ -58,6 +59,49 @@ class PlayoffTests(unittest.TestCase):
         first_round = [match for match in bracket.matches if match.round_index == 0]
         return [(match.player_one_seed, match.player_two_seed) for match in first_round]
 
+    def assert_public_safe(self, value):
+        if isinstance(value, dict):
+            for key, nested_value in value.items():
+                self.assertNotIn("cossy", key)
+                self.assertNotEqual(key, "id")
+                self.assertFalse(key.endswith("_id"), key)
+                self.assertNotIn("file_path", key)
+                self.assertNotIn("local_path", key)
+                self.assert_public_safe(nested_value)
+        elif isinstance(value, list):
+            for item in value:
+                self.assert_public_safe(item)
+
+    def test_generated_protected_seed_order(self):
+        self.assertEqual(protected_playoff_seed_order(4), [1, 4, 2, 3])
+        self.assertEqual(protected_playoff_seed_order(8), [1, 8, 4, 5, 2, 7, 3, 6])
+        self.assertEqual(
+            protected_playoff_seed_order(16),
+            [1, 16, 8, 9, 4, 13, 5, 12, 2, 15, 7, 10, 3, 14, 6, 11],
+        )
+        self.assertEqual(
+            protected_playoff_seed_order(32),
+            [
+                1, 32, 16, 17, 8, 25, 9, 24,
+                4, 29, 13, 20, 5, 28, 12, 21,
+                2, 31, 15, 18, 7, 26, 10, 23,
+                3, 30, 14, 19, 6, 27, 11, 22,
+            ],
+        )
+        self.assertEqual(
+            protected_playoff_seed_order(64),
+            [
+                1, 64, 32, 33, 16, 49, 17, 48,
+                8, 57, 25, 40, 9, 56, 24, 41,
+                4, 61, 29, 36, 13, 52, 20, 45,
+                5, 60, 28, 37, 12, 53, 21, 44,
+                2, 63, 31, 34, 15, 50, 18, 47,
+                7, 58, 26, 39, 10, 55, 23, 42,
+                3, 62, 30, 35, 14, 51, 19, 46,
+                6, 59, 27, 38, 11, 54, 22, 43,
+            ],
+        )
+
     def test_creates_top_4_with_protected_seed_order(self):
         db = self.SessionLocal()
         try:
@@ -72,7 +116,7 @@ class PlayoffTests(unittest.TestCase):
         try:
             tournament, _profiles = self.seed_tournament(db, 8)
             bracket = create_playoffs(tournament.id, PlayoffCreate(size=8), db)
-            self.assertEqual(self.seed_pairs(bracket), [(1, 8), (4, 5), (3, 6), (2, 7)])
+            self.assertEqual(self.seed_pairs(bracket), [(1, 8), (4, 5), (2, 7), (3, 6)])
         finally:
             db.close()
 
@@ -83,8 +127,34 @@ class PlayoffTests(unittest.TestCase):
             bracket = create_playoffs(tournament.id, PlayoffCreate(size=16), db)
             self.assertEqual(
                 self.seed_pairs(bracket),
-                [(1, 16), (8, 9), (5, 12), (4, 13), (3, 14), (6, 11), (7, 10), (2, 15)],
+                [(1, 16), (8, 9), (4, 13), (5, 12), (2, 15), (7, 10), (3, 14), (6, 11)],
             )
+        finally:
+            db.close()
+
+    def test_top_32_advancement_uses_generic_match_mapping(self):
+        db = self.SessionLocal()
+        try:
+            tournament, _profiles = self.seed_tournament(db, 32)
+            bracket = create_playoffs(tournament.id, PlayoffCreate(size=32), db)
+            first_round = [match for match in bracket.matches if match.round_index == 0]
+
+            bracket = update_playoff_winner(
+                tournament.id,
+                first_round[0].id,
+                PlayoffWinnerUpdate(winner_player_id=first_round[0].player_one_id),
+                db,
+            )
+            bracket = update_playoff_winner(
+                tournament.id,
+                first_round[1].id,
+                PlayoffWinnerUpdate(winner_player_id=first_round[1].player_two_id),
+                db,
+            )
+
+            round_of_16 = [match for match in bracket.matches if match.round_index == 1]
+            self.assertEqual(round_of_16[0].player_one_id, first_round[0].player_one_id)
+            self.assertEqual(round_of_16[0].player_two_id, first_round[1].player_two_id)
         finally:
             db.close()
 
@@ -262,22 +332,26 @@ class PlayoffTests(unittest.TestCase):
             self.assertEqual(playoff_bracket["rounds"][0]["matches"][0]["players"][0]["seed"], 1)
             self.assertEqual(playoff_bracket["rounds"][0]["matches"][0]["players"][0]["name"], "Player 1")
             self.assertTrue(playoff_bracket["rounds"][0]["matches"][0]["players"][0]["winner"])
-
-            def assert_public_safe(value):
-                if isinstance(value, dict):
-                    for key, nested_value in value.items():
-                        self.assertNotIn("cossy", key)
-                        self.assertNotEqual(key, "id")
-                        self.assertFalse(key.endswith("_id"), key)
-                        self.assertNotIn("file_path", key)
-                        assert_public_safe(nested_value)
-                elif isinstance(value, list):
-                    for item in value:
-                        assert_public_safe(item)
-
-            assert_public_safe(playoff_bracket)
+            self.assert_public_safe(playoff_bracket)
         finally:
             db.close()
+
+    def test_publish_payload_includes_public_safe_top_32_and_64_playoff_brackets(self):
+        for size, first_round_name in [(32, "Round of 32"), (64, "Round of 64")]:
+            db = self.SessionLocal()
+            try:
+                tournament, _profiles = self.seed_tournament(db, size, cossy_prefix=f"top-{size}-")
+                create_playoffs(tournament.id, PlayoffCreate(size=size), db)
+
+                payload = build_publish_payload(db, tournament)
+                playoff_bracket = payload["playoff_bracket"]
+
+                self.assertEqual(playoff_bracket["size"], size)
+                self.assertEqual(playoff_bracket["rounds"][0]["name"], first_round_name)
+                self.assertEqual(len(playoff_bracket["rounds"][0]["matches"]), size // 2)
+                self.assert_public_safe(playoff_bracket)
+            finally:
+                db.close()
 
     def test_published_tournament_playoff_changes_refresh_public_snapshot(self):
         db = self.SessionLocal()
