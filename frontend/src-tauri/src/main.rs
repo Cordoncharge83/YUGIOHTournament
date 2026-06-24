@@ -41,6 +41,8 @@ fn main() {
             set_kts_executable_path,
             clear_kts_executable_path,
             launch_kts,
+            read_tournament_backup_file,
+            write_tournament_backup_file,
         ])
         .setup(|app| {
             let backend_child = start_backend(app);
@@ -94,6 +96,18 @@ fn launch_kts(path: String) -> Result<(), String> {
     command.creation_flags(CREATE_NO_WINDOW);
 
     command.spawn().map(|_| ()).map_err(|error| format!("Could not launch KTS: {error}"))
+}
+
+#[tauri::command]
+fn read_tournament_backup_file(path: String) -> Result<String, String> {
+    let backup_path = validate_backup_file_path(&path, false)?;
+    fs::read_to_string(&backup_path).map_err(|error| format!("Could not read tournament backup: {error}"))
+}
+
+#[tauri::command]
+fn write_tournament_backup_file(path: String, contents: String) -> Result<(), String> {
+    let backup_path = validate_backup_file_path(&path, true)?;
+    fs::write(&backup_path, contents).map_err(|error| format!("Could not write tournament backup: {error}"))
 }
 
 fn start_backend(app: &tauri::App) -> Option<Child> {
@@ -379,6 +393,35 @@ fn validate_kts_executable_path(path: &str) -> Result<String, String> {
     }
 
     Ok(executable_path.to_string_lossy().to_string())
+}
+
+fn validate_backup_file_path(path: &str, allow_missing: bool) -> Result<PathBuf, String> {
+    let backup_path = PathBuf::from(path.trim());
+    if backup_path.as_os_str().is_empty() {
+        return Err("Choose a tournament backup file first.".to_string());
+    }
+
+    if !allow_missing && !backup_path.exists() {
+        return Err("The selected tournament backup does not exist.".to_string());
+    }
+
+    if backup_path.exists() && !backup_path.is_file() {
+        return Err("The selected tournament backup path must point to a file.".to_string());
+    }
+
+    let file_name = backup_path
+        .file_name()
+        .and_then(|file_name| file_name.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    if !(file_name.ends_with(".json")
+        || file_name.ends_with(".ygotournament.json")
+        || file_name.ends_with(".tournament-backup.json"))
+    {
+        return Err("Use a .json tournament backup file.".to_string());
+    }
+
+    Ok(backup_path)
 }
 
 fn has_exe_extension(path: &Path) -> bool {

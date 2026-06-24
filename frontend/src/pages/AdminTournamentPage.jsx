@@ -1085,7 +1085,7 @@ export default function AdminTournamentPage() {
   const currentKtsFilePath = watchedFilePath || savedKtsFilePath;
   const currentKtsFileName = watchedFileName || savedKtsFileName;
   const autoSyncTargetLabel = autoSyncStatus?.tournament_id
-    ? `${autoSyncStatus.tournament_name || "Tournament"} #${autoSyncStatus.tournament_id}`
+    ? autoSyncStatus.tournament_name || "another tournament"
     : null;
   const lastSyncTime = autoSyncStatus?.last_sync_at
     ? new Date(autoSyncStatus.last_sync_at).toLocaleString()
@@ -1204,7 +1204,7 @@ export default function AdminTournamentPage() {
         <div className="grid gap-5 lg:grid-cols-[1fr_auto] lg:items-center">
           <div>
             <p className="text-sm font-medium uppercase tracking-wide text-blue-700">KTS companion display</p>
-            <h1 className="mt-2 text-3xl font-semibold text-gray-950">{tournament?.name || `Tournament #${id}`}</h1>
+            <h1 className="mt-2 text-3xl font-semibold text-gray-950">{tournament?.name || "Tournament"}</h1>
             <div className="mt-4 grid gap-3 text-sm text-gray-700 sm:grid-cols-3">
               <div>
                 <p className="font-semibold text-gray-950">Location</p>
@@ -1845,7 +1845,7 @@ export default function AdminTournamentPage() {
                     )}
 
                     <button
-                      aria-label={`Delete match ${match.id}`}
+                      aria-label={`Delete ${match.table_number ? `table ${match.table_number}` : "match"}`}
                       className="flex h-8 w-8 items-center justify-center self-end rounded border border-red-200 text-lg font-semibold leading-none text-red-700 hover:bg-red-50"
                       onClick={() => handleDeleteMatch(match.id)}
                       type="button"

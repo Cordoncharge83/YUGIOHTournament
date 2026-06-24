@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
-import { Link } from "react-router-dom";
-import { CalendarDays, MapPin, Plus, RefreshCw, Share2, Trash2 } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
+import { CalendarDays, Download, MapPin, Plus, RefreshCw, Share2, Trash2, Upload } from "lucide-react";
 
 import api, { getApiErrorMessage } from "../api/client";
 import { Badge } from "../components/ui/badge";
@@ -16,7 +16,29 @@ import {
 } from "../components/ui/dialog";
 import { Input } from "../components/ui/input";
 
+function isTauriApp() {
+  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+}
+
+function backupFileName(tournament) {
+  const safeName = (tournament.name || "tournament")
+    .trim()
+    .replace(/[^a-z0-9_-]+/gi, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80) || "tournament";
+  return `${safeName}.ygotournament.json`;
+}
+
+function getBackupErrorMessage(error, fallbackMessage) {
+  if (error?.response) {
+    return getApiErrorMessage(error, fallbackMessage);
+  }
+
+  return error?.message || fallbackMessage;
+}
+
 export default function AdminPage() {
+  const navigate = useNavigate();
   const [tournaments, setTournaments] = useState([]);
   const [name, setName] = useState("");
   const [location, setLocation] = useState("");
@@ -24,9 +46,14 @@ export default function AdminPage() {
   const [isCreating, setIsCreating] = useState(false);
   const [deletingTournamentId, setDeletingTournamentId] = useState(null);
   const [updatingStatsTournamentId, setUpdatingStatsTournamentId] = useState(null);
+  const [exportingTournamentId, setExportingTournamentId] = useState(null);
+  const [isImportingBackup, setIsImportingBackup] = useState(false);
   const [error, setError] = useState("");
+  const [backupMessage, setBackupMessage] = useState("");
+  const [backupError, setBackupError] = useState("");
   const [shareTournament, setShareTournament] = useState(null);
   const [copyMessage, setCopyMessage] = useState("");
+  const backupFileInputRef = useRef(null);
 
   async function fetchTournaments() {
     try {
@@ -98,6 +125,143 @@ export default function AdminPage() {
       setError(getApiErrorMessage(error, "Could not delete tournament."));
     } finally {
       setDeletingTournamentId(null);
+    }
+  }
+
+  async function invokeTauriCommand(command, args) {
+    const { invoke } = await import("@tauri-apps/api/core");
+    return invoke(command, args);
+  }
+
+  async function saveBackupWithTauri(tournament, contents) {
+    const { save } = await import("@tauri-apps/plugin-dialog");
+    const path = await save({
+      defaultPath: backupFileName(tournament),
+      title: "Export Tournament Backup",
+      filters: [
+        {
+          name: "Yu-Gi-Oh Tournament Backup",
+          extensions: ["json"],
+        },
+      ],
+    });
+
+    if (!path) {
+      return false;
+    }
+
+    await invokeTauriCommand("write_tournament_backup_file", { path, contents });
+    return true;
+  }
+
+  function saveBackupWithBrowser(tournament, contents) {
+    const blob = new Blob([contents], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = backupFileName(tournament);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  async function handleExportTournament(tournament) {
+    try {
+      setExportingTournamentId(tournament.id);
+      setBackupError("");
+      setBackupMessage("");
+      const response = await api.get(`/tournaments/${tournament.id}/export`);
+      const contents = `${JSON.stringify(response.data, null, 2)}\n`;
+
+      if (isTauriApp()) {
+        const saved = await saveBackupWithTauri(tournament, contents);
+        if (!saved) {
+          return;
+        }
+      } else {
+        saveBackupWithBrowser(tournament, contents);
+      }
+
+      setBackupMessage(`Exported ${tournament.name}.`);
+    } catch (error) {
+      setBackupError(getBackupErrorMessage(error, "Could not export tournament backup."));
+    } finally {
+      setExportingTournamentId(null);
+    }
+  }
+
+  async function importBackupContents(contents) {
+    let backup;
+    try {
+      backup = JSON.parse(contents);
+    } catch {
+      throw new Error("Backup file must be valid JSON.");
+    }
+
+    const response = await api.post("/tournaments/import", backup);
+    setTournaments((currentTournaments) => [response.data, ...currentTournaments]);
+    setBackupMessage(`Imported ${response.data.name}.`);
+    navigate(`/admin/tournaments/${response.data.id}`);
+  }
+
+  async function handleImportBackupFromTauri() {
+    const { open } = await import("@tauri-apps/plugin-dialog");
+    const selectedFile = await open({
+      directory: false,
+      multiple: false,
+      title: "Import Tournament Backup",
+      filters: [
+        {
+          name: "Yu-Gi-Oh Tournament Backup",
+          extensions: ["json"],
+        },
+      ],
+    });
+    const path = Array.isArray(selectedFile) ? selectedFile[0] : selectedFile;
+    if (!path) {
+      return;
+    }
+
+    const contents = await invokeTauriCommand("read_tournament_backup_file", { path });
+    await importBackupContents(contents);
+  }
+
+  async function handleImportBackupClick() {
+    try {
+      setIsImportingBackup(true);
+      setBackupError("");
+      setBackupMessage("");
+
+      if (isTauriApp()) {
+        await handleImportBackupFromTauri();
+        return;
+      }
+
+      backupFileInputRef.current?.click();
+    } catch (error) {
+      setBackupError(getBackupErrorMessage(error, "Could not import tournament backup."));
+    } finally {
+      setIsImportingBackup(false);
+    }
+  }
+
+  async function handleImportBackupFile(event) {
+    const file = event.target.files?.[0] || null;
+    event.target.value = "";
+    if (!file) {
+      return;
+    }
+
+    try {
+      setIsImportingBackup(true);
+      setBackupError("");
+      setBackupMessage("");
+      await importBackupContents(await file.text());
+    } catch (error) {
+      setBackupError(getBackupErrorMessage(error, "Could not import tournament backup."));
+    } finally {
+      setIsImportingBackup(false);
     }
   }
 
@@ -179,12 +343,27 @@ export default function AdminPage() {
             <CardTitle>Tournament dashboard</CardTitle>
             <CardDescription>{tournaments.length} saved tournament{tournaments.length === 1 ? "" : "s"}</CardDescription>
           </div>
-          <Button onClick={fetchTournaments} size="sm" type="button" variant="ghost">
-            <RefreshCw className="h-4 w-4" />
-            Refresh
-          </Button>
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button disabled={isImportingBackup} onClick={handleImportBackupClick} size="sm" type="button" variant="outline">
+              <Upload className="h-4 w-4" />
+              {isImportingBackup ? "Importing..." : "Import backup"}
+            </Button>
+            <Button onClick={fetchTournaments} size="sm" type="button" variant="ghost">
+              <RefreshCw className="h-4 w-4" />
+              Refresh
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
+          <input
+            accept=".json,.ygotournament.json,.tournament-backup.json,application/json"
+            className="hidden"
+            onChange={handleImportBackupFile}
+            ref={backupFileInputRef}
+            type="file"
+          />
+          {backupError ? <p className="mb-4 text-sm font-medium text-rose-300">{backupError}</p> : null}
+          {backupMessage ? <p className="mb-4 text-sm font-medium text-emerald-300">{backupMessage}</p> : null}
           {isLoading ? <p className="text-sm text-slate-400">Loading tournaments...</p> : null}
 
           {!isLoading && tournaments.length === 0 ? (
@@ -201,7 +380,6 @@ export default function AdminPage() {
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
                         <h3 className="truncate text-base font-semibold text-slate-50">{tournament.name}</h3>
-                        <Badge variant="secondary">#{tournament.id}</Badge>
                         {tournament.counts_toward_community_stats === false ? (
                           <Badge className="border-amber-400/35 bg-amber-400/10 text-amber-200">
                             Stats excluded
@@ -248,6 +426,16 @@ export default function AdminPage() {
                       >
                         <Share2 className="h-4 w-4" />
                         Share
+                      </Button>
+                      <Button
+                        disabled={exportingTournamentId === tournament.id}
+                        onClick={() => handleExportTournament(tournament)}
+                        size="sm"
+                        type="button"
+                        variant="outline"
+                      >
+                        <Download className="h-4 w-4" />
+                        {exportingTournamentId === tournament.id ? "Exporting..." : "Export"}
                       </Button>
                       <Button
                         disabled={deletingTournamentId === tournament.id}
